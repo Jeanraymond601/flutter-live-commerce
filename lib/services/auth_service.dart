@@ -434,6 +434,15 @@ class AuthService extends ChangeNotifier {
   }
 
   // ================================
+  // 🔁 RENVoyer le code de réinitialisation
+  // ================================
+  Future<void> resendResetCode(String email) async {
+    // On utilise la méthode existante forgotPassword
+    await forgotPassword(email);
+    print('🔄 Code de réinitialisation renvoyé pour $email');
+  }
+
+  // ================================
   // VÉRIFICATION CODE DE RÉINITIALISATION
   // ================================
   Future<String> verifyResetCode(String email, String code) async {

@@ -1,4 +1,8 @@
+// ignore_for_file: use_build_context_synchronously
+
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 
@@ -12,12 +16,20 @@ class VerifyResetCodeScreen extends StatefulWidget {
 }
 
 class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _codeController = TextEditingController();
+  final List<TextEditingController> _controllers = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
+  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+
   bool _isLoading = false;
+  bool _isCodeComplete = false;
   String? _errorMessage;
-  bool _showResendButton = false;
-  int _countdownSeconds = 60; // Temps avant de pouvoir renvoyer le code
+
+  int _countdownSeconds = 60; // 60 secondes comme demandé
+  Timer? _timer;
+
+  final Color primaryBlue = const Color.fromARGB(255, 25, 47, 242);
 
   @override
   void initState() {
@@ -25,19 +37,56 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
     _startCountdown();
   }
 
+  @override
+  void dispose() {
+    _timer?.cancel();
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
+  String get _code => _controllers.map((c) => c.text).join();
+
+  void _onCodeChanged() {
+    setState(() {
+      _isCodeComplete = _controllers.every((c) => c.text.isNotEmpty);
+    });
+  }
+
+  void _onChanged(String value, int index) {
+    // S'assurer que seule la dernière valeur est gardée si l'utilisateur colle un code
+    if (value.length > 1) {
+      _controllers[index].text = value[value.length - 1];
+      return;
+    }
+
+    if (value.isNotEmpty && index < 5) {
+      _focusNodes[index + 1].requestFocus();
+    } else if (value.isEmpty && index > 0) {
+      _focusNodes[index - 1].requestFocus();
+    }
+    _onCodeChanged();
+  }
+
   void _startCountdown() {
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted && _countdownSeconds > 0) {
+    _timer?.cancel();
+    setState(() => _countdownSeconds = 60);
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdownSeconds == 0) {
+        timer.cancel();
+      } else {
         setState(() => _countdownSeconds--);
-        _startCountdown();
-      } else if (mounted) {
-        setState(() => _showResendButton = true);
       }
     });
   }
 
   Future<void> _verifyCode() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_isCodeComplete || _countdownSeconds == 0) return;
 
     setState(() {
       _isLoading = true;
@@ -46,14 +95,10 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
 
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
-      final resetToken = await authService.verifyResetCode(
-        widget.email,
-        _codeController.text.trim(),
-      );
+      final resetToken = await authService.verifyResetCode(widget.email, _code);
 
       if (!mounted) return;
 
-      // Redirection automatique vers reset-password
       Navigator.pushReplacementNamed(
         context,
         '/reset-password',
@@ -64,265 +109,209 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
       });
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _resendCode() async {
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
-      await authService.forgotPassword(widget.email);
-
-      if (!mounted) return;
-
-      _showSuccessSnackbar('Nouveau code envoyé !');
-      setState(() {
-        _showResendButton = false;
-        _countdownSeconds = 60;
-        _codeController.clear();
-        _errorMessage = null;
-      });
+      await authService.resendResetCode(widget.email);
       _startCountdown();
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Code renvoyé avec succès')));
     } catch (e) {
-      if (!mounted) return;
-      _showErrorSnackbar('Erreur lors de l\'envoi du code');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
-  void _showSuccessSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
+  Widget _buildOtpBox(int index) {
+    return SizedBox(
+      width: 50,
+      height: 60,
+      child: TextFormField(
+        controller: _controllers[index],
+        focusNode: _focusNodes[index],
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+        ], // ✅ Seulement des chiffres
+        textAlign: TextAlign.center,
+        maxLength: 1,
+        style: const TextStyle(
+          fontSize: 26, // Augmenté pour meilleure lisibilité
+          fontWeight: FontWeight.bold,
+          color: Colors.black, // Couleur bien visible
+        ),
+        decoration: InputDecoration(
+          counterText: '',
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: primaryBlue, width: 2),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.grey, width: 1),
+          ),
+          contentPadding: EdgeInsets.zero, // Pour mieux centrer le texte
+        ),
+        onChanged: (v) => _onChanged(v, index),
       ),
     );
-  }
-
-  void _showErrorSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    bool canVerify = _isCodeComplete && _countdownSeconds > 0;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Vérifier le code'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 20),
-
-              // Header
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade100),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.email, color: Colors.blue.shade700),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.email,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey.shade800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Code valable 15 minutes',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              const Text(
-                'Vérification du code',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                'Entrez le code à 6 chiffres reçu par email',
-                style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-              ),
-
-              const SizedBox(height: 30),
-
-              // Code Input
-              TextFormField(
-                controller: _codeController,
-                decoration: InputDecoration(
-                  labelText: 'Code de vérification',
-                  hintText: '123456',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _verifyCode(),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Veuillez entrer le code';
-                  }
-                  if (value.length != 6) {
-                    return 'Le code doit contenir 6 chiffres';
-                  }
-                  if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
-                    return 'Le code doit contenir uniquement des chiffres';
-                  }
-                  return null;
-                },
-              ),
-
-              // Error Message
-              if (_errorMessage != null)
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Icône modifiée pour un code/verification
                 Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  padding: const EdgeInsets.all(12),
+                  width: 100,
+                  height: 100,
                   decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.shade100),
+                    color: primaryBlue, // Retour à la couleur bleue d'origine
+                    shape: BoxShape.circle,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        color: Colors.red.shade700,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(color: Colors.red.shade700),
-                        ),
-                      ),
-                    ],
+                  child: const Icon(
+                    Icons.verified_user_outlined, // Ou Icons.vpn_key_outlined
+                    size: 50,
+                    color: Colors.white,
                   ),
                 ),
-
-              const SizedBox(height: 30),
-
-              // Verify Button
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _verifyCode,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade700,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 32),
+                Text(
+                  'Vérification du code',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: primaryBlue,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Entrez le code à 6 chiffres envoyé à',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.email,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: primaryBlue,
+                  ),
+                ),
+                const SizedBox(height: 40),
+                // Conteneur pour les cases OTP avec espacement uniforme
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: List.generate(6, (i) => _buildOtpBox(i)),
+                  ),
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 20),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          'Vérifier le code',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+                ],
+                const SizedBox(height: 32),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: canVerify ? _verifyCode : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: canVerify ? primaryBlue : Colors.grey,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Resend Code Section
-              Center(
-                child: Column(
-                  children: [
-                    if (!_showResendButton)
-                      Text(
-                        'Renvoyer le code dans $_countdownSeconds secondes',
-                        style: TextStyle(color: Colors.grey.shade600),
+                        elevation: 2,
                       ),
-
-                    if (_showResendButton)
-                      OutlinedButton(
-                        onPressed: _resendCode,
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: BorderSide(color: Colors.blue.shade400),
-                        ),
-                        child: const Text(
-                          'Renvoyer le code',
-                          style: TextStyle(color: Colors.blue),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Back to Forgot Password
-              Center(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    'Modifier l\'adresse email',
-                    style: TextStyle(color: Colors.grey),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Vérifier',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _countdownSeconds == 0 ? _resendCode : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _countdownSeconds == 0
+                            ? primaryBlue // Retour à la couleur bleue solide
+                            : Colors.grey.shade300,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 2,
+                      ),
+                      child: Text(
+                        _countdownSeconds == 0
+                            ? 'Renvoyer le code'
+                            : 'Renvoyer dans $_countdownSeconds s',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _countdownSeconds == 0
+                              ? Colors.white
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
