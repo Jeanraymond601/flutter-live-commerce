@@ -3,7 +3,7 @@ class Constants {
   // ================================
   // URL DE BASE - PRODUCTION
   // ================================
-  static const String apiBaseUrl = 'https://609fdae1d662.ngrok-free.app';
+  static const String apiBaseUrl = 'https://9cbb628e8ee7.ngrok-free.app';
 
   static const String apiPrefix = '/api/v1';
 
