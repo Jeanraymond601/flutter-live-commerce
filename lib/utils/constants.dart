@@ -3,7 +3,7 @@ class Constants {
   // ================================
   // URL DE BASE - PRODUCTION
   // ================================
-  static const String apiBaseUrl = 'http://localhost:8000';
+  static const String apiBaseUrl = 'http://192.168.1.49:8000';
   static const String apiPrefix = '/api/v1';
 
   // ================================
