@@ -55,15 +55,12 @@ class _DriverListScreenState extends State<DriverListScreen> {
 
     setState(() {
       if (refresh) {
-        // Réinitialiser l'état pendant le rafraîchissement
         _isLoading = true;
       }
     });
 
     try {
       final driverService = context.read<DriverService>();
-
-      // Initialiser le token si nécessaire
       await driverService.initializeToken();
 
       final response = await driverService.getDrivers(
@@ -201,7 +198,6 @@ class _DriverListScreenState extends State<DriverListScreen> {
     }
   }
 
-  // CORRECTION PRINCIPALE : MÉTHODE POUR SUPPRIMER UN LIVREUR
   Future<void> _deleteDriver(Driver driver) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -239,19 +235,13 @@ class _DriverListScreenState extends State<DriverListScreen> {
       if (result['success'] == true && mounted) {
         _showSuccessSnackbar('Livreur supprimé avec succès');
 
-        // CORRECTION 1 : Mettre à jour la liste locale immédiatement
         setState(() {
-          // Supprimer le livreur de la liste locale
           _drivers.removeWhere((d) => d.id == driver.id);
-          // Reappliquer les filtres
           _filteredDrivers = _applyFilters(_drivers);
         });
 
-        // CORRECTION 2 : Rafraîchir les statistiques
         await _loadStats();
 
-        // CORRECTION 3 : Rafraîchir depuis le serveur pour être sûr
-        // (en arrière-plan, sans bloquer l'UI)
         Future.delayed(Duration.zero, () async {
           await _loadDrivers();
         });
@@ -268,90 +258,70 @@ class _DriverListScreenState extends State<DriverListScreen> {
   Widget _buildStatsCards() {
     if (_isLoadingStats) {
       return const Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.symmetric(vertical: 16),
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    // Utiliser les statistiques ou des valeurs par défaut
     final stats = _stats ?? {};
     final byStatut = stats['by_statut'] ?? {};
     final byDisponibilite = stats['by_disponibilite'] ?? {};
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Ligne 1: Totaux
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Total',
-                  value: '${stats['total'] ?? _drivers.length}',
-                  icon: Icons.people,
-                  color: Colors.blue,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Actifs',
-                  value:
-                      '${stats['active'] ?? _drivers.where((d) => d.statut == 'actif').length}',
-                  icon: Icons.check_circle,
-                  color: Colors.green,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Disponibles',
-                  value:
-                      '${stats['available'] ?? _drivers.where((d) => d.disponibilite == 'disponible').length}',
-                  icon: Icons.directions_car,
-                  color: Colors.teal,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Ligne 2: Statuts
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Indisponibles',
-                  value:
-                      '${byDisponibilite['indisponible'] ?? _drivers.where((d) => d.disponibilite == 'indisponible').length}',
-                  icon: Icons.block,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStatCard(
-                  title: 'En attente',
-                  value:
-                      '${byStatut['en_attente'] ?? _drivers.where((d) => d.statut == 'en_attente').length}',
-                  icon: Icons.access_time,
-                  color: Colors.orange,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Suspendus',
-                  value:
-                      '${byStatut['suspendu'] ?? _drivers.where((d) => d.statut == 'suspendu').length}',
-                  icon: Icons.pause_circle,
-                  color: Colors.red,
-                ),
-              ),
-            ],
-          ),
-        ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            // Cartes de statistiques horizontales
+            _buildStatCard(
+              title: 'Total',
+              value: '${stats['total'] ?? _drivers.length}',
+              icon: Icons.people,
+              color: Colors.blue,
+            ),
+            const SizedBox(width: 8),
+            _buildStatCard(
+              title: 'Actifs',
+              value:
+                  '${stats['active'] ?? _drivers.where((d) => d.statut == 'actif').length}',
+              icon: Icons.check_circle,
+              color: Colors.green,
+            ),
+            const SizedBox(width: 8),
+            _buildStatCard(
+              title: 'Disponibles',
+              value:
+                  '${stats['available'] ?? _drivers.where((d) => d.disponibilite == 'disponible').length}',
+              icon: Icons.directions_car,
+              color: Colors.teal,
+            ),
+            const SizedBox(width: 8),
+            _buildStatCard(
+              title: 'Indisponibles',
+              value:
+                  '${byDisponibilite['indisponible'] ?? _drivers.where((d) => d.disponibilite == 'indisponible').length}',
+              icon: Icons.block,
+              color: Colors.grey,
+            ),
+            const SizedBox(width: 8),
+            _buildStatCard(
+              title: 'En attente',
+              value:
+                  '${byStatut['en_attente'] ?? _drivers.where((d) => d.statut == 'en_attente').length}',
+              icon: Icons.access_time,
+              color: Colors.orange,
+            ),
+            const SizedBox(width: 8),
+            _buildStatCard(
+              title: 'Suspendus',
+              value:
+                  '${byStatut['suspendu'] ?? _drivers.where((d) => d.statut == 'suspendu').length}',
+              icon: Icons.pause_circle,
+              color: Colors.red,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -362,38 +332,46 @@ class _DriverListScreenState extends State<DriverListScreen> {
     required IconData icon,
     required Color color,
   }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                    fontWeight: FontWeight.w500,
+    return SizedBox(
+      width: 120, // Largeur fixe pour les cartes
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                Icon(icon, size: 16, color: color),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
+                  Icon(icon, size: 16, color: color),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20, // Taille réduite pour mieux s'adapter
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -402,35 +380,27 @@ class _DriverListScreenState extends State<DriverListScreen> {
   void _showStatusFilter() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Filtrer par statut',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+              ),
+              child: const Text(
+                'Filtrer par statut',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-          ListTile(
-            title: const Text('Tous les statuts'),
-            leading: Radio<String?>(
-              value: null,
-              groupValue: _selectedStatus,
-              onChanged: (value) {
-                setState(() {
-                  _selectedStatus = value;
-                  _filteredDrivers = _applyFilters(_drivers);
-                });
-                Navigator.pop(context);
-              },
-            ),
-          ),
-          ...['actif', 'en_attente', 'suspendu', 'rejeté'].map((status) {
-            return ListTile(
-              title: Text(_getStatusLabel(status)),
+            ListTile(
+              title: const Text('Tous les statuts'),
               leading: Radio<String?>(
-                value: status,
+                value: null,
                 groupValue: _selectedStatus,
                 onChanged: (value) {
                   setState(() {
@@ -440,9 +410,39 @@ class _DriverListScreenState extends State<DriverListScreen> {
                   Navigator.pop(context);
                 },
               ),
-            );
-          }),
-        ],
+            ),
+            ...['actif', 'en_attente', 'suspendu', 'rejeté'].map((status) {
+              return ListTile(
+                title: Text(_getStatusLabel(status)),
+                leading: Radio<String?>(
+                  value: status,
+                  groupValue: _selectedStatus,
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedStatus = value;
+                      _filteredDrivers = _applyFilters(_drivers);
+                    });
+                    Navigator.pop(context);
+                  },
+                ),
+              );
+            }),
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade200,
+                    foregroundColor: Colors.black,
+                  ),
+                  child: const Text('Fermer'),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -453,15 +453,15 @@ class _DriverListScreenState extends State<DriverListScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: 6,
+        runSpacing: 6,
         children: [
           if (_selectedStatus != null)
-            Chip(
+            InputChip(
               label: Text('Statut: ${_getStatusLabel(_selectedStatus!)}'),
-              deleteIcon: const Icon(Icons.close, size: 16),
+              deleteIcon: const Icon(Icons.close, size: 14),
               onDeleted: () {
                 setState(() {
                   _selectedStatus = null;
@@ -469,12 +469,17 @@ class _DriverListScreenState extends State<DriverListScreen> {
                 });
               },
               backgroundColor: Colors.blue.shade100,
-              labelStyle: const TextStyle(color: Colors.blue, fontSize: 12),
+              labelStyle: const TextStyle(
+                color: Colors.blue,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             ),
           if (_searchQuery.isNotEmpty)
-            Chip(
+            InputChip(
               label: Text('Recherche: $_searchQuery'),
-              deleteIcon: const Icon(Icons.close, size: 16),
+              deleteIcon: const Icon(Icons.close, size: 14),
               onDeleted: () {
                 _searchController.clear();
                 setState(() {
@@ -483,22 +488,33 @@ class _DriverListScreenState extends State<DriverListScreen> {
                 });
               },
               backgroundColor: Colors.green.shade100,
-              labelStyle: const TextStyle(color: Colors.green, fontSize: 12),
+              labelStyle: const TextStyle(
+                color: Colors.green,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             ),
-          ActionChip(
-            label: const Text('Tout effacer'),
-            onPressed: () {
-              _searchController.clear();
-              setState(() {
-                _selectedStatus = null;
-                _searchQuery = '';
-                _filteredDrivers = _applyFilters(_drivers);
-              });
-            },
-            backgroundColor: Colors.red.shade100,
-            labelStyle: const TextStyle(color: Colors.red, fontSize: 12),
-            avatar: const Icon(Icons.clear_all, size: 16, color: Colors.red),
-          ),
+          if (_selectedStatus != null || _searchQuery.isNotEmpty)
+            ActionChip(
+              label: const Text('Tout effacer'),
+              onPressed: () {
+                _searchController.clear();
+                setState(() {
+                  _selectedStatus = null;
+                  _searchQuery = '';
+                  _filteredDrivers = _applyFilters(_drivers);
+                });
+              },
+              backgroundColor: Colors.red.shade100,
+              labelStyle: const TextStyle(
+                color: Colors.red,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              avatar: const Icon(Icons.clear_all, size: 14, color: Colors.red),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            ),
         ],
       ),
     );
@@ -506,32 +522,47 @@ class _DriverListScreenState extends State<DriverListScreen> {
 
   Widget _buildDriversList() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(),
+        ),
+      );
     }
 
     if (_filteredDrivers.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.person_off, size: 80, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            Text(
-              _searchQuery.isNotEmpty || _selectedStatus != null
-                  ? 'Aucun livreur ne correspond aux filtres'
-                  : 'Aucun livreur trouvé',
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            if (_searchQuery.isEmpty && _selectedStatus == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: ElevatedButton.icon(
-                  onPressed: _navigateToCreateDriver,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Ajouter un livreur'),
-                ),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.person_off, size: 80, color: Colors.grey.shade300),
+              const SizedBox(height: 16),
+              Text(
+                _searchQuery.isNotEmpty || _selectedStatus != null
+                    ? 'Aucun livreur ne correspond aux filtres'
+                    : 'Aucun livreur trouvé',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+                textAlign: TextAlign.center,
               ),
-          ],
+              if (_searchQuery.isEmpty && _selectedStatus == null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: ElevatedButton.icon(
+                    onPressed: _navigateToCreateDriver,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Ajouter un livreur'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       );
     }
@@ -542,7 +573,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
       onRefresh: _onRefresh,
       header: const ClassicHeader(),
       child: ListView.separated(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         itemCount: _filteredDrivers.length,
         separatorBuilder: (context, index) => const SizedBox(height: 8),
         itemBuilder: (context, index) {
@@ -564,7 +595,6 @@ class _DriverListScreenState extends State<DriverListScreen> {
     );
 
     if (result != null && result == true && mounted) {
-      // Rafraîchir toutes les données après création
       _onRefresh();
     }
   }
@@ -576,7 +606,6 @@ class _DriverListScreenState extends State<DriverListScreen> {
     );
 
     if (result != null && result == true && mounted) {
-      // Rafraîchir toutes les données après modification
       _onRefresh();
     }
   }
@@ -612,22 +641,21 @@ class _DriverListScreenState extends State<DriverListScreen> {
             onPressed: _onRefresh,
             tooltip: 'Rafraîchir',
           ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _navigateToCreateDriver,
-            tooltip: 'Ajouter un livreur',
-          ),
         ],
       ),
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Cartes de statistiques
-            _buildStatsCards(),
+            // Cartes de statistiques horizontales
+            SizedBox(
+              height: 100, // Hauteur fixe pour les cartes de stats
+              child: _buildStatsCards(),
+            ),
 
             // Barre de recherche
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
@@ -649,6 +677,8 @@ class _DriverListScreenState extends State<DriverListScreen> {
                     horizontal: 16,
                     vertical: 12,
                   ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
                 ),
                 onChanged: _onSearchChanged,
               ),
@@ -657,15 +687,38 @@ class _DriverListScreenState extends State<DriverListScreen> {
             // Filtres actifs
             _buildFilterChip(),
 
+            // En-tête avec compte et bouton d'ajout
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Livreurs (${_filteredDrivers.length})',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _navigateToCreateDriver,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Ajouter'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             // Liste des livreurs
             Expanded(child: _buildDriversList()),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToCreateDriver,
-        tooltip: 'Ajouter un livreur',
-        child: const Icon(Icons.add),
       ),
     );
   }

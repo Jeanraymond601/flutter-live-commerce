@@ -1,6 +1,7 @@
 // lib/services/auth_service.dart
 // ignore_for_file: avoid_print
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -321,7 +322,7 @@ class AuthService extends ChangeNotifier {
   }
 
   // ================================
-  // RÉCUPÉRATION DEPUIS L'API
+  // RÉCUPÉRATION DEPUIS L'API - CORRECTION EXACTE
   // ================================
   Future<void> _fetchCurrentUser() async {
     if (_authToken == null) {
@@ -329,64 +330,117 @@ class AuthService extends ChangeNotifier {
       return;
     }
 
-    final url = Uri.parse('${Constants.getApiUrl()}${Constants.authMe}');
+    try {
+      final url = Uri.parse('${Constants.getApiUrl()}${Constants.authMe}');
 
-    print('🌐 Fetching user from: $url');
-    print(
-      '🔑 Using token: ${_authToken!.substring(0, min(_authToken!.length, 30))}...',
-    );
-
-    final response = await http.get(
-      url,
-      headers: {
-        'Authorization': 'Bearer $_authToken',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    );
-
-    print('📡 Réponse get-current-user: ${response.statusCode}');
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-
-      _currentVendor = Vendor(
-        id: data['id']?.toString() ?? data['user_id']?.toString() ?? '',
-        email: data['email'] ?? '',
-        name: data['full_name'] ?? data['name'] ?? '',
-        role: data['role'] ?? 'vendeur',
-        phone: data['telephone'] ?? data['phone'] ?? '',
-        address: data['adresse'] ?? data['address'] ?? '',
-        isActive: data['is_active'] ?? true,
-        createdAt: data['created_at'] != null
-            ? DateTime.parse(data['created_at'])
-            : DateTime.now(),
-        updatedAt: data['updated_at'] != null
-            ? DateTime.parse(data['updated_at'])
-            : DateTime.now(),
-        sellerId: data['seller_id']?.toString(),
-        companyName: data['company_name'],
-        subscriptionStatus:
-            data['abonnement_status'] ??
-            data['subscription_status'] ??
-            'active',
+      print('🌐 Appel de: $url');
+      print(
+        '🔑 Token utilisé (début): ${_authToken!.substring(0, min(_authToken!.length, 30))}...',
       );
 
-      // Mettre à jour le stockage
-      await _storeUserInfo(data);
+      final response = await http
+          .get(
+            url,
+            headers: {
+              'Authorization': 'Bearer $_authToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              // Ajouter d'autres headers au besoin
+              'ngrok-skip-browser-warning': 'true',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
 
-      print('✅ Utilisateur récupéré: ${_currentVendor!.email}');
-    } else if (response.statusCode == 401) {
-      print('⚠️ Token invalide ou expiré');
-      await _clearSession();
-      throw Exception('Session expirée');
-    } else {
-      final error = jsonDecode(response.body);
-      final errorMsg =
-          error['detail'] ??
-          error['message'] ??
-          'Erreur de récupération du profil';
-      throw Exception(errorMsg);
+      print('📡 Statut HTTP: ${response.statusCode}');
+      print('📡 Headers: ${response.headers}');
+
+      // VÉRIFIER SI LA RÉPONSE EST DU HTML
+      final responseBody = response.body.trim();
+      if (responseBody.startsWith('<!DOCTYPE') ||
+          responseBody.startsWith('<html') ||
+          responseBody.startsWith('<?xml') ||
+          responseBody.contains('<head>')) {
+        print('❌ Le serveur retourne du HTML au lieu de JSON');
+        print('📄 Extrait HTML (200 premiers caractères):');
+        print(responseBody.substring(0, min(responseBody.length, 200)));
+
+        // RAISON 1: Token invalide ou expiré
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          print('🔐 Token rejeté par le serveur (HTTP ${response.statusCode})');
+          await _clearSession();
+          throw Exception('Session expirée. Veuillez vous reconnecter.');
+        }
+
+        // RAISON 2: Endpoint inexistant ou erreur serveur
+        if (response.statusCode == 404) {
+          print('🔍 Endpoint ${Constants.authMe} non trouvé (404)');
+          throw Exception(
+            'Configuration serveur: endpoint /auth/me non disponible',
+          );
+        }
+
+        // RAISON 3: Problème de CORS ou autre erreur
+        throw Exception(
+          'Le serveur retourne une page HTML. Code HTTP: ${response.statusCode}',
+        );
+      }
+
+      // SI TOUT EST BON, PARSER LE JSON
+      if (response.statusCode == 200) {
+        try {
+          final data = jsonDecode(responseBody);
+          print('✅ JSON parsé avec succès');
+          print('📊 Données utilisateur: $data');
+
+          _currentVendor = Vendor(
+            id: data['id']?.toString() ?? data['user_id']?.toString() ?? '',
+            email: data['email'] ?? '',
+            name: data['full_name'] ?? data['name'] ?? '',
+            role: data['role']?.toLowerCase() ?? 'vendeur',
+            phone: data['telephone'] ?? data['phone'] ?? '',
+            address: data['adresse'] ?? data['address'] ?? '',
+            isActive: data['is_active'] ?? true,
+            createdAt: data['created_at'] != null
+                ? DateTime.parse(data['created_at'])
+                : DateTime.now(),
+            updatedAt: data['updated_at'] != null
+                ? DateTime.parse(data['updated_at'])
+                : DateTime.now(),
+            sellerId: data['seller_id']?.toString(),
+            companyName: data['company_name'],
+            subscriptionStatus:
+                data['abonnement_status'] ??
+                data['subscription_status'] ??
+                'active',
+          );
+
+          // Mettre à jour le stockage
+          await _storeUserInfo(data);
+          print('✅ Utilisateur récupéré: ${_currentVendor!.email}');
+        } on FormatException catch (e) {
+          print('❌ Erreur de parsing JSON: $e');
+          print('📄 Corps de la réponse (500 premiers caractères):');
+          print(responseBody.substring(0, min(responseBody.length, 500)));
+          throw Exception('Format de réponse invalide du serveur');
+        }
+      } else {
+        // Autres codes d'erreur
+        print('❌ Code HTTP non 200: ${response.statusCode}');
+        print('📄 Corps de la réponse: $responseBody');
+
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          await _clearSession();
+          throw Exception('Session expirée');
+        } else {
+          throw Exception('Erreur serveur (HTTP ${response.statusCode})');
+        }
+      }
+    } on TimeoutException {
+      print('⏰ Timeout lors de la récupération de l\'utilisateur');
+      throw Exception('Délai d\'attente dépassé');
+    } catch (e) {
+      print('❌ Erreur _fetchCurrentUser: $e');
+      rethrow;
     }
   }
 
