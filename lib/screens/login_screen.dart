@@ -16,6 +16,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
+  final Color primaryBlue = const Color.fromARGB(255, 25, 47, 242);
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -30,10 +32,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Récupérer l'utilisateur
       await authService.getCurrentUser();
 
-      // Rediriger vers le dashboard
       // ignore: use_build_context_synchronously
       Navigator.pushReplacementNamed(context, '/dashboard');
     } catch (e) {
@@ -92,21 +92,25 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Logo
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 50,
-                  backgroundColor: Colors.blue,
-                  child: Icon(Icons.store, size: 50, color: Colors.white),
+                  backgroundColor: primaryBlue,
+                  child: Icon(
+                    Icons.shopping_bag_rounded,
+                    size: 50,
+                    color: Colors.white,
+                  ),
                 ),
 
                 const SizedBox(height: 24),
 
                 // Titre
-                const Text(
+                Text(
                   'Live Commerce',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue,
+                    color: primaryBlue,
                   ),
                 ),
 
@@ -191,9 +195,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: () {
                             Navigator.pushNamed(context, '/forgot-password');
                           },
-                          child: const Text(
+                          child: Text(
                             'Mot de passe oublié ?',
-                            style: TextStyle(color: Colors.blue),
+                            style: TextStyle(color: primaryBlue),
                           ),
                         ),
                       ),
@@ -207,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _login,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
+                            backgroundColor: primaryBlue,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -242,11 +246,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             onPressed: () {
                               Navigator.pushNamed(context, '/signup');
                             },
-                            child: const Text(
+                            child: Text(
                               'S\'inscrire',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.blue,
+                                color: primaryBlue,
                               ),
                             ),
                           ),
