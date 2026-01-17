@@ -145,59 +145,66 @@ class AuthService extends ChangeNotifier {
 
     try {
       print('🔐 Tentative de connexion: $email');
+      print('🌐 URL: ${Constants.apiBaseUrl}${Constants.authLogin}');
 
       final url = Uri.parse('${Constants.getApiUrl()}${Constants.authLogin}');
       final body = jsonEncode({'email': email, 'password': password});
 
-      print('🌐 URL: $url');
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
+            body: body,
+          )
+          .timeout(const Duration(seconds: 20));
 
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: body,
-      );
-
-      print('📡 Réponse: ${response.statusCode}');
+      print('📡 Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        print('✅ Réponse reçue');
 
         // 1. Récupérer le token
-        final token = data['access_token'] ?? data['token'];
-        if (token == null || token.isEmpty) {
-          throw Exception('Token non reçu dans la réponse');
+        final token = data['access_token'];
+        if (token == null) {
+          throw Exception('Token non reçu');
         }
 
-        print('🔑 Token reçu (${token.length} caractères)');
+        print('🔑 Token reçu');
 
         // 2. Stocker le token
         await _storeToken(token);
 
-        // 3. Stocker les données initiales
-        await _storeUserInfo(data);
-
-        // 4. Récupérer les informations complètes de l'utilisateur
-        await _fetchCurrentUser();
-
-        print(
-          '✅ Connexion réussie: ${_currentVendor!.email} (${_currentVendor!.role})',
+        // 3. CRÉER L'OBJET VENDOR DIRECTEMENT À PARTIR DE LA RÉPONSE
+        _currentVendor = Vendor(
+          id: data['user_id'] ?? '',
+          email: data['email'] ?? '',
+          name: data['full_name'] ?? '',
+          role: data['role']?.toLowerCase() ?? 'vendeur',
+          phone: data['telephone'] ?? '',
+          address: data['adresse'] ?? '',
+          isActive: data['is_active'] ?? true,
+          sellerId: data['seller_id']?.toString(),
+          companyName: data['company_name'],
+          subscriptionStatus: data['abonnement_status'] ?? 'actif',
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
         );
 
-        // 5. Vérification finale
-        final savedToken = await getToken();
-        if (savedToken != null) {
-          print('✓ Token sauvegardé avec succès');
-        }
+        // 4. Stocker les données utilisateur
+        await _storeUserInfo(data);
+
+        print('✅ Utilisateur connecté: ${_currentVendor!.email}');
+        print('✅ Rôle: ${_currentVendor!.role}');
+        print('✅ Seller ID: ${_currentVendor!.sellerId}');
+      } else if (response.statusCode == 401) {
+        throw Exception('Email ou mot de passe incorrect');
       } else {
-        final error = jsonDecode(response.body);
-        final errorMsg =
-            error['detail'] ??
-            error['message'] ??
-            'Échec de la connexion (${response.statusCode})';
-        throw Exception(errorMsg);
+        throw Exception('Erreur ${response.statusCode}');
       }
     } catch (e) {
       print('❌ Erreur connexion: $e');

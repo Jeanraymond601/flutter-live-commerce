@@ -1,3 +1,4 @@
+// models/facebook_models.dart - VERSION COMPLÈTE CORRIGÉE
 // ==================== MODÈLES PRINCIPAUX ====================
 
 class FacebookUser {
@@ -37,24 +38,29 @@ class FacebookUser {
 
   factory FacebookUser.fromJson(Map<String, dynamic> json) {
     return FacebookUser(
-      id: json['id'],
-      facebookUserId: json['facebook_user_id'],
-      email: json['email'],
-      name: json['name'],
-      firstName: json['first_name'],
-      lastName: json['last_name'],
-      profilePicUrl: json['profile_pic_url'],
-      longLivedToken: json['long_lived_token'],
-      tokenExpiresAt: DateTime.parse(json['token_expires_at']),
+      id: json['id']?.toString() ?? '',
+      facebookUserId: json['facebook_user_id']?.toString() ?? '',
+      email: json['email']?.toString(),
+      name: json['name']?.toString(),
+      firstName: json['first_name']?.toString(),
+      lastName: json['last_name']?.toString(),
+      profilePicUrl: json['profile_pic_url']?.toString(),
+      longLivedToken: json['long_lived_token']?.toString() ?? '',
+      tokenExpiresAt: json['token_expires_at'] != null
+          ? DateTime.tryParse(json['token_expires_at'].toString()) ??
+                DateTime.now().add(const Duration(days: 60))
+          : DateTime.now().add(const Duration(days: 60)),
       grantedPermissions: List<String>.from(json['granted_permissions'] ?? []),
-      sellerId: json['seller_id'],
+      sellerId: json['seller_id']?.toString(),
       isActive: json['is_active'] ?? true,
       lastSync: json['last_sync'] != null
-          ? DateTime.parse(json['last_sync'])
+          ? DateTime.tryParse(json['last_sync'].toString())
           : null,
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+          ? DateTime.tryParse(json['updated_at'].toString())
           : null,
     );
   }
@@ -93,7 +99,7 @@ class FacebookPage {
   final DateTime tokenExpiresAt;
   final String facebookUserId;
   final String sellerId;
-  bool isSelected; // ⬅️ CHANGER DE final À bool
+  final bool isSelected;
   final bool autoReplyEnabled;
   final bool autoProcessComments;
   final DateTime createdAt;
@@ -112,7 +118,7 @@ class FacebookPage {
     required this.tokenExpiresAt,
     required this.facebookUserId,
     required this.sellerId,
-    required this.isSelected, // ⬅️ CHANGER EN required
+    required this.isSelected,
     required this.autoReplyEnabled,
     required this.autoProcessComments,
     required this.createdAt,
@@ -120,6 +126,48 @@ class FacebookPage {
   });
 
   factory FacebookPage.fromJson(Map<String, dynamic> json) {
+    // CORRECTION : Gérer l'absence de auto_reply_enabled en utilisant une valeur par défaut
+    bool? autoReplyEnabled;
+
+    // Essayer de récupérer la valeur de différentes façons
+    if (json['auto_reply_enabled'] != null) {
+      if (json['auto_reply_enabled'] is bool) {
+        autoReplyEnabled = json['auto_reply_enabled'] as bool;
+      } else if (json['auto_reply_enabled'] is String) {
+        autoReplyEnabled =
+            json['auto_reply_enabled'].toString().toLowerCase() == 'true';
+      } else if (json['auto_reply_enabled'] is int) {
+        autoReplyEnabled = json['auto_reply_enabled'] == 1;
+      }
+    }
+
+    // Si toujours null, essayer d'autres champs
+    if (autoReplyEnabled == null) {
+      if (json.containsKey('auto_reply')) {
+        if (json['auto_reply'] is bool) {
+          autoReplyEnabled = json['auto_reply'] as bool;
+        }
+      }
+    }
+
+    // CORRECTION : Gérer la conversion des dates
+    DateTime? parseDateTime(dynamic value) {
+      if (value == null) return null;
+      try {
+        if (value is String) {
+          return DateTime.tryParse(value);
+        } else if (value is DateTime) {
+          return value;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    final createdAtValue = parseDateTime(json['created_at']) ?? DateTime.now();
+    final tokenExpiresAtValue =
+        parseDateTime(json['token_expires_at']) ??
+        DateTime.now().add(const Duration(days: 60));
+
     return FacebookPage(
       id: json['id']?.toString() ?? '',
       pageId: json['page_id']?.toString() ?? json['id']?.toString() ?? '',
@@ -130,14 +178,14 @@ class FacebookPage {
       profilePicUrl: json['profile_pic_url']?.toString(),
       fanCount: (json['fan_count'] ?? 0) as int,
       pageAccessToken: json['page_access_token']?.toString() ?? '',
-      tokenExpiresAt: DateTime.now().add(const Duration(days: 60)),
+      tokenExpiresAt: tokenExpiresAtValue,
       facebookUserId: json['facebook_user_id']?.toString() ?? '',
       sellerId: json['seller_id']?.toString() ?? '',
-      isSelected: json['is_selected'] == true,
-      autoReplyEnabled: json['auto_reply_enabled'] == true,
-      autoProcessComments: json['auto_process_comments'] ?? false,
-      createdAt: DateTime.now(),
-      updatedAt: null,
+      isSelected: (json['is_selected'] ?? false) == true,
+      autoReplyEnabled: autoReplyEnabled ?? false, // Valeur par défaut si null
+      autoProcessComments: (json['auto_process_comments'] ?? false) == true,
+      createdAt: createdAtValue,
+      updatedAt: parseDateTime(json['updated_at']),
     );
   }
 
@@ -163,7 +211,7 @@ class FacebookPage {
     };
   }
 
-  // ⬅️ AJOUTER: Méthode pour créer une copie avec des valeurs modifiées
+  // CORRECTION : Méthode pour créer une copie avec des valeurs modifiées
   FacebookPage copyWith({
     String? id,
     String? pageId,
@@ -207,9 +255,10 @@ class FacebookPage {
 
 class FacebookPost {
   final String id;
-  final String postId;
+  final String facebookPostId;
   final String? message;
-  final String? type;
+  final String? story;
+  final String? postType;
   final String? pictureUrl;
   final String? fullPictureUrl;
   final String? link;
@@ -218,18 +267,19 @@ class FacebookPost {
   final int sharesCount;
   final String pageId;
   final String sellerId;
-  final DateTime facebookCreatedTime;
-  final DateTime? updatedTime;
+  final DateTime? createdAt;
+  final DateTime? facebookCreatedTime;
+  final DateTime? updatedAt;
   final bool isHidden;
   final bool isLiveCommerce;
-  final DateTime createdAt;
-  final DateTime? updatedAt;
+  final List<FacebookComment> comments;
 
   FacebookPost({
     required this.id,
-    required this.postId,
+    required this.facebookPostId,
     this.message,
-    this.type,
+    this.story,
+    this.postType,
     this.pictureUrl,
     this.fullPictureUrl,
     this.link,
@@ -238,51 +288,68 @@ class FacebookPost {
     required this.sharesCount,
     required this.pageId,
     required this.sellerId,
-    required this.facebookCreatedTime,
-    this.updatedTime,
+    this.createdAt,
+    this.facebookCreatedTime,
+    this.updatedAt,
     required this.isHidden,
     required this.isLiveCommerce,
-    required this.createdAt,
-    this.updatedAt,
+    this.comments = const [],
   });
 
   factory FacebookPost.fromJson(Map<String, dynamic> json) {
     return FacebookPost(
-      id: json['id'],
-      postId: json['post_id'],
-      message: json['message'],
-      type: json['type'],
-      pictureUrl: json['picture_url'],
-      fullPictureUrl: json['full_picture_url'],
-      link: json['link'],
-      likesCount: json['likes_count'] ?? 0,
-      commentsCount: json['comments_count'] ?? 0,
-      sharesCount: json['shares_count'] ?? 0,
-      pageId: json['page_id'],
-      sellerId: json['seller_id'],
-      facebookCreatedTime: DateTime.parse(json['facebook_created_time']),
-      updatedTime: json['updated_time'] != null
-          ? DateTime.parse(json['updated_time'])
+      id: json['id']?.toString() ?? '',
+      facebookPostId:
+          json['facebook_post_id']?.toString() ?? json['id']?.toString() ?? '',
+      message: json['message']?.toString(),
+      story: json['story']?.toString(),
+      postType: json['post_type']?.toString(),
+      pictureUrl: json['picture_url']?.toString(),
+      fullPictureUrl: json['full_picture_url']?.toString(),
+      link: json['link']?.toString(),
+      likesCount: (json['likes_count'] ?? 0) as int,
+      commentsCount: (json['comments_count'] ?? 0) as int,
+      sharesCount: (json['shares_count'] ?? 0) as int,
+      pageId: json['page_id']?.toString() ?? '',
+      sellerId: json['seller_id']?.toString() ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())?.toLocal()
+          : null,
+      facebookCreatedTime: json['facebook_created_time'] != null
+          ? DateTime.tryParse(
+              json['facebook_created_time'].toString(),
+            )?.toLocal()
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'].toString())?.toLocal()
           : null,
       isHidden: json['is_hidden'] ?? false,
       isLiveCommerce: json['is_live_commerce'] ?? false,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
-          : null,
+      comments: json.containsKey('comments') && json['comments'] is List
+          ? (json['comments'] as List)
+                .map(
+                  (comment) => FacebookComment.fromJson(
+                    Map<String, dynamic>.from(comment),
+                  ),
+                )
+                .toList()
+          : [],
     );
   }
 
   String get formattedDate {
+    final time = facebookCreatedTime ?? createdAt;
+    if (time == null) return 'Date inconnue';
+
     final now = DateTime.now();
-    final difference = now.difference(facebookCreatedTime);
+    final difference = now.difference(time);
 
     if (difference.inMinutes < 1) return 'À l\'instant';
     if (difference.inMinutes < 60) return 'Il y a ${difference.inMinutes} min';
     if (difference.inHours < 24) return 'Il y a ${difference.inHours} h';
     if (difference.inDays < 7) return 'Il y a ${difference.inDays} j';
 
-    return '${facebookCreatedTime.day}/${facebookCreatedTime.month}/${facebookCreatedTime.year}';
+    return '${time.day}/${time.month}/${time.year} à ${time.hour}:${time.minute.toString().padLeft(2, '0')}';
   }
 
   String get truncatedMessage {
@@ -303,6 +370,7 @@ class FacebookLiveVideo {
   final DateTime? scheduledStartTime;
   final DateTime? actualStartTime;
   final DateTime? endTime;
+  final int viewersCount;
   final int totalComments;
   final int totalOrders;
   final double totalRevenue;
@@ -311,8 +379,12 @@ class FacebookLiveVideo {
   final bool autoProcessComments;
   final bool notifyOnNewOrders;
   final String sellerId;
-  final DateTime createdAt;
+  final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? streamUrl;
+  final String? permalinkUrl;
+  final int? duration;
+  final List<FacebookComment> comments;
 
   FacebookLiveVideo({
     required this.id,
@@ -324,47 +396,70 @@ class FacebookLiveVideo {
     this.scheduledStartTime,
     this.actualStartTime,
     this.endTime,
-    required this.totalComments,
-    required this.totalOrders,
-    required this.totalRevenue,
-    required this.nlpProcessedComments,
-    required this.ambiguousComments,
+    this.viewersCount = 0,
+    this.totalComments = 0,
+    this.totalOrders = 0,
+    this.totalRevenue = 0.0,
+    this.nlpProcessedComments = 0,
+    this.ambiguousComments = 0,
     required this.autoProcessComments,
     required this.notifyOnNewOrders,
     required this.sellerId,
-    required this.createdAt,
+    this.createdAt,
     this.updatedAt,
+    this.streamUrl,
+    this.permalinkUrl,
+    this.duration,
+    this.comments = const [],
   });
 
   factory FacebookLiveVideo.fromJson(Map<String, dynamic> json) {
     return FacebookLiveVideo(
-      id: json['id'],
-      facebookVideoId: json['facebook_video_id'],
-      pageId: json['page_id'],
-      title: json['title'],
-      description: json['description'],
-      status: json['status'] ?? 'scheduled',
+      id: json['id']?.toString() ?? '',
+      facebookVideoId:
+          json['facebook_video_id']?.toString() ?? json['id']?.toString() ?? '',
+      pageId: json['page_id']?.toString() ?? '',
+      title: json['title']?.toString(),
+      description: json['description']?.toString(),
+      status: json['status']?.toString() ?? 'published',
       scheduledStartTime: json['scheduled_start_time'] != null
-          ? DateTime.parse(json['scheduled_start_time'])
+          ? DateTime.tryParse(
+              json['scheduled_start_time'].toString(),
+            )?.toLocal()
           : null,
       actualStartTime: json['actual_start_time'] != null
-          ? DateTime.parse(json['actual_start_time'])
+          ? DateTime.tryParse(json['actual_start_time'].toString())?.toLocal()
           : null,
       endTime: json['end_time'] != null
-          ? DateTime.parse(json['end_time'])
+          ? DateTime.tryParse(json['end_time'].toString())?.toLocal()
           : null,
-      totalComments: json['total_comments'] ?? 0,
-      totalOrders: json['total_orders'] ?? 0,
+      viewersCount: (json['viewers_count'] ?? 0) as int,
+      totalComments: (json['total_comments'] ?? 0) as int,
+      totalOrders: (json['total_orders'] ?? 0) as int,
       totalRevenue: (json['total_revenue'] ?? 0.0).toDouble(),
-      nlpProcessedComments: json['nlp_processed_comments'] ?? 0,
-      ambiguousComments: json['ambiguous_comments'] ?? 0,
-      autoProcessComments: json['auto_process_comments'] ?? true,
-      notifyOnNewOrders: json['notify_on_new_orders'] ?? true,
-      sellerId: json['seller_id'],
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+      nlpProcessedComments: (json['nlp_processed_comments'] ?? 0) as int,
+      ambiguousComments: (json['ambiguous_comments'] ?? 0) as int,
+      autoProcessComments: json['auto_process_comments'] ?? false,
+      notifyOnNewOrders: json['notify_on_new_orders'] ?? false,
+      sellerId: json['seller_id']?.toString() ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())?.toLocal()
           : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'].toString())?.toLocal()
+          : null,
+      streamUrl: json['stream_url']?.toString(),
+      permalinkUrl: json['permalink_url']?.toString(),
+      duration: (json['duration'] ?? 0) as int,
+      comments: json.containsKey('comments') && json['comments'] is List
+          ? (json['comments'] as List)
+                .map(
+                  (comment) => FacebookComment.fromJson(
+                    Map<String, dynamic>.from(comment),
+                  ),
+                )
+                .toList()
+          : [],
     );
   }
 
@@ -373,12 +468,16 @@ class FacebookLiveVideo {
     if (actualStartTime != null) {
       return '${actualStartTime!.day}/${actualStartTime!.month} ${actualStartTime!.hour}:${actualStartTime!.minute.toString().padLeft(2, '0')}';
     }
-    return 'Planifié';
+    if (scheduledStartTime != null) {
+      return 'Planifié: ${scheduledStartTime!.day}/${scheduledStartTime!.month}';
+    }
+    return 'Publié';
   }
 
   bool get isLive => status.toLowerCase() == 'live';
   bool get isEnded => status.toLowerCase() == 'ended';
   bool get isScheduled => status.toLowerCase() == 'scheduled';
+  bool get isPublished => status.toLowerCase() == 'published';
 }
 
 class FacebookComment {
@@ -406,7 +505,7 @@ class FacebookComment {
   final DateTime? facebookCreatedTime;
   final int? processingTimeMs;
   final DateTime? processedAt;
-  final DateTime createdAt;
+  final DateTime? createdAt;
   final DateTime? updatedAt;
 
   FacebookComment({
@@ -434,55 +533,92 @@ class FacebookComment {
     this.facebookCreatedTime,
     this.processingTimeMs,
     this.processedAt,
-    required this.createdAt,
+    this.createdAt,
     this.updatedAt,
   });
 
   factory FacebookComment.fromJson(Map<String, dynamic> json) {
+    // CORRECTION : Gérer la conversion sécurisée des nombres
+    int safeInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is String) {
+        try {
+          return int.tryParse(value) ?? 0;
+        } catch (_) {
+          return 0;
+        }
+      }
+      return 0;
+    }
+
+    double? safeDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) {
+        try {
+          return double.tryParse(value);
+        } catch (_) {
+          return null;
+        }
+      }
+      return null;
+    }
+
     return FacebookComment(
-      id: json['id'],
-      message: json['message'] ?? '',
-      userId: json['user_id'],
-      userName: json['user_name'],
-      pageId: json['page_id'],
-      intent: json['intent'],
-      sentiment: json['sentiment'],
+      id: json['id']?.toString() ?? '',
+      message: json['message']?.toString() ?? '',
+      userId: json['user_id']?.toString(),
+      userName: json['user_name']?.toString(),
+      pageId: json['page_id']?.toString(),
+      intent: json['intent']?.toString(),
+      sentiment: json['sentiment']?.toString(),
       entities: json['entities'] != null
           ? Map<String, dynamic>.from(json['entities'])
           : null,
-      priority: json['priority'],
-      sellerId: json['seller_id'],
-      postId: json['post_id'],
-      status: json['status'] ?? 'new',
-      detectedCodeArticle: json['detected_code_article'],
-      detectedProductName: json['detected_product_name'],
-      detectedQuantity: json['detected_quantity'] ?? 1,
-      confidenceScore: (json['confidence_score'] ?? 0.0).toDouble(),
-      responseText: json['response_text'],
-      actionTaken: json['action_taken'],
+      priority: json['priority']?.toString(),
+      sellerId: json['seller_id']?.toString() ?? '',
+      postId: json['post_id']?.toString(),
+      status: json['status']?.toString() ?? 'new',
+      detectedCodeArticle: json['detected_code_article']?.toString(),
+      detectedProductName: json['detected_product_name']?.toString(),
+      detectedQuantity: safeInt(json['detected_quantity']),
+      confidenceScore: safeDouble(json['confidence_score']),
+      responseText: json['response_text']?.toString(),
+      actionTaken: json['action_taken']?.toString(),
       extractedData: json['extracted_data'] != null
           ? Map<String, dynamic>.from(json['extracted_data'])
           : null,
       validationData: json['validation_data'] != null
           ? Map<String, dynamic>.from(json['validation_data'])
           : null,
-      orderId: json['order_id'],
+      orderId: json['order_id']?.toString(),
       facebookCreatedTime: json['facebook_created_time'] != null
-          ? DateTime.parse(json['facebook_created_time'])
+          ? DateTime.tryParse(
+              json['facebook_created_time'].toString(),
+            )?.toLocal()
           : null,
-      processingTimeMs: json['processing_time_ms'],
+      processingTimeMs: json['processing_time_ms'] != null
+          ? safeInt(json['processing_time_ms'])
+          : null,
       processedAt: json['processed_at'] != null
-          ? DateTime.parse(json['processed_at'])
+          ? DateTime.tryParse(json['processed_at'].toString())?.toLocal()
           : null,
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())?.toLocal()
+          : null,
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+          ? DateTime.tryParse(json['updated_at'].toString())?.toLocal()
           : null,
     );
   }
 
   String get formattedTime {
     final time = facebookCreatedTime ?? createdAt;
+    if (time == null) return 'Date inconnue';
+
     final now = DateTime.now();
     final difference = now.difference(time);
 
@@ -512,7 +648,11 @@ class FacebookMessage {
   final String sellerId;
   final String? orderId;
   final DateTime? sentAt;
-  final DateTime createdAt;
+  final DateTime? createdAt;
+  final String? messageId;
+  final String? senderId;
+  final String? recipientId;
+  final Map<String, dynamic>? messageMetadata;
 
   FacebookMessage({
     required this.id,
@@ -525,22 +665,36 @@ class FacebookMessage {
     required this.sellerId,
     this.orderId,
     this.sentAt,
-    required this.createdAt,
+    this.createdAt,
+    this.messageId,
+    this.senderId,
+    this.recipientId,
+    this.messageMetadata,
   });
 
   factory FacebookMessage.fromJson(Map<String, dynamic> json) {
     return FacebookMessage(
-      id: json['id'],
-      customerFacebookId: json['customer_facebook_id'],
-      messageType: json['message_type'],
-      content: json['content'],
-      status: json['status'] ?? 'pending',
-      direction: json['direction'] ?? 'outgoing',
-      facebookPageId: json['facebook_page_id'],
-      sellerId: json['seller_id'],
-      orderId: json['order_id'],
-      sentAt: json['sent_at'] != null ? DateTime.parse(json['sent_at']) : null,
-      createdAt: DateTime.parse(json['created_at']),
+      id: json['id']?.toString() ?? '',
+      customerFacebookId: json['customer_facebook_id']?.toString(),
+      messageType: json['message_type']?.toString() ?? 'text',
+      content: json['content']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'pending',
+      direction: json['direction']?.toString() ?? 'outgoing',
+      facebookPageId: json['facebook_page_id']?.toString(),
+      sellerId: json['seller_id']?.toString() ?? '',
+      orderId: json['order_id']?.toString(),
+      sentAt: json['sent_at'] != null
+          ? DateTime.tryParse(json['sent_at'].toString())?.toLocal()
+          : null,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())?.toLocal()
+          : null,
+      messageId: json['message_id']?.toString(),
+      senderId: json['sender_id']?.toString(),
+      recipientId: json['recipient_id']?.toString(),
+      messageMetadata: json['message_metadata'] != null
+          ? Map<String, dynamic>.from(json['message_metadata'])
+          : null,
     );
   }
 
@@ -565,7 +719,7 @@ class FacebookWebhookLog {
   final bool processed;
   final String? processingError;
   final DateTime? processedAt;
-  final DateTime createdAt;
+  final DateTime? createdAt;
   final DateTime? updatedAt;
 
   FacebookWebhookLog({
@@ -581,29 +735,33 @@ class FacebookWebhookLog {
     required this.processed,
     this.processingError,
     this.processedAt,
-    required this.createdAt,
+    this.createdAt,
     this.updatedAt,
   });
 
   factory FacebookWebhookLog.fromJson(Map<String, dynamic> json) {
     return FacebookWebhookLog(
-      id: json['id'],
-      objectType: json['object_type'],
-      eventType: json['event_type'],
-      entryId: json['entry_id'],
-      pageId: json['page_id'],
-      payload: Map<String, dynamic>.from(json['payload']),
-      signature: json['signature'],
-      httpMethod: json['http_method'] ?? 'POST',
-      statusCode: json['status_code'],
-      processed: json['processed'] ?? false,
-      processingError: json['processing_error'],
-      processedAt: json['processed_at'] != null
-          ? DateTime.parse(json['processed_at'])
+      id: json['id']?.toString() ?? '',
+      objectType: json['object_type']?.toString() ?? '',
+      eventType: json['event_type']?.toString() ?? '',
+      entryId: json['entry_id']?.toString(),
+      pageId: json['page_id']?.toString(),
+      payload: Map<String, dynamic>.from(json['payload'] ?? {}),
+      signature: json['signature']?.toString(),
+      httpMethod: json['http_method']?.toString() ?? 'POST',
+      statusCode: json['status_code'] != null
+          ? int.tryParse(json['status_code'].toString())
           : null,
-      createdAt: DateTime.parse(json['created_at']),
+      processed: json['processed'] ?? false,
+      processingError: json['processing_error']?.toString(),
+      processedAt: json['processed_at'] != null
+          ? DateTime.tryParse(json['processed_at'].toString())?.toLocal()
+          : null,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())?.toLocal()
+          : null,
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+          ? DateTime.tryParse(json['updated_at'].toString())?.toLocal()
           : null,
     );
   }
@@ -616,7 +774,7 @@ class FacebookWebhookSubscription {
   final bool isActive;
   final DateTime? lastReceived;
   final String sellerId;
-  final DateTime createdAt;
+  final DateTime? createdAt;
   final DateTime? updatedAt;
 
   FacebookWebhookSubscription({
@@ -626,23 +784,25 @@ class FacebookWebhookSubscription {
     required this.isActive,
     this.lastReceived,
     required this.sellerId,
-    required this.createdAt,
+    this.createdAt,
     this.updatedAt,
   });
 
   factory FacebookWebhookSubscription.fromJson(Map<String, dynamic> json) {
     return FacebookWebhookSubscription(
-      id: json['id'],
-      pageId: json['page_id'],
-      subscriptionType: json['subscription_type'],
+      id: json['id']?.toString() ?? '',
+      pageId: json['page_id']?.toString() ?? '',
+      subscriptionType: json['subscription_type']?.toString() ?? 'webhook',
       isActive: json['is_active'] ?? true,
       lastReceived: json['last_received'] != null
-          ? DateTime.parse(json['last_received'])
+          ? DateTime.tryParse(json['last_received'].toString())?.toLocal()
           : null,
-      sellerId: json['seller_id'],
-      createdAt: DateTime.parse(json['created_at']),
+      sellerId: json['seller_id']?.toString() ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())?.toLocal()
+          : null,
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+          ? DateTime.tryParse(json['updated_at'].toString())?.toLocal()
           : null,
     );
   }
@@ -665,7 +825,7 @@ class NLPProcessingLog {
   final String? errorMessage;
   final Map<String, dynamic>? errorDetails;
   final String? stackTrace;
-  final DateTime createdAt;
+  final DateTime? createdAt;
 
   NLPProcessingLog({
     required this.id,
@@ -684,30 +844,46 @@ class NLPProcessingLog {
     this.errorMessage,
     this.errorDetails,
     this.stackTrace,
-    required this.createdAt,
+    this.createdAt,
   });
 
   factory NLPProcessingLog.fromJson(Map<String, dynamic> json) {
     return NLPProcessingLog(
-      id: json['id'],
-      commentId: json['comment_id'],
-      processorVersion: json['processor_version'] ?? '1.0.0',
-      processingTimeMs: json['processing_time_ms'],
+      id: json['id']?.toString() ?? '',
+      commentId: json['comment_id']?.toString() ?? '',
+      processorVersion: json['processor_version']?.toString() ?? '1.0.0',
+      processingTimeMs: json['processing_time_ms'] != null
+          ? int.tryParse(json['processing_time_ms'].toString())
+          : null,
       success: json['success'] ?? true,
-      detectedIntent: json['detected_intent'],
-      confidenceScore: (json['confidence_score'] ?? 0.0).toDouble(),
+      detectedIntent: json['detected_intent']?.toString(),
+      confidenceScore: json['confidence_score'] != null
+          ? (json['confidence_score'] is double
+                ? json['confidence_score'] as double
+                : double.tryParse(json['confidence_score'].toString()) ?? 0.0)
+          : 0.0,
       isAmbiguous: json['is_ambiguous'],
       requiresHumanReview: json['requires_human_review'],
-      detectedProducts: json['detected_products'],
-      detectedQuantities: json['detected_quantities'],
-      detectedColors: json['detected_colors'],
-      detectedSizes: json['detected_sizes'],
-      errorMessage: json['error_message'],
+      detectedProducts: json['detected_products'] != null
+          ? List<dynamic>.from(json['detected_products'])
+          : null,
+      detectedQuantities: json['detected_quantities'] != null
+          ? List<dynamic>.from(json['detected_quantities'])
+          : null,
+      detectedColors: json['detected_colors'] != null
+          ? List<dynamic>.from(json['detected_colors'])
+          : null,
+      detectedSizes: json['detected_sizes'] != null
+          ? List<dynamic>.from(json['detected_sizes'])
+          : null,
+      errorMessage: json['error_message']?.toString(),
       errorDetails: json['error_details'] != null
           ? Map<String, dynamic>.from(json['error_details'])
           : null,
-      stackTrace: json['stack_trace'],
-      createdAt: DateTime.parse(json['created_at']),
+      stackTrace: json['stack_trace']?.toString(),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())?.toLocal()
+          : null,
     );
   }
 }
@@ -728,8 +904,8 @@ class FacebookConnectResponse {
   factory FacebookConnectResponse.fromJson(Map<String, dynamic> json) {
     return FacebookConnectResponse(
       success: json['success'] ?? false,
-      authUrl: json['auth_url'],
-      state: json['state'],
+      authUrl: json['auth_url']?.toString() ?? '',
+      state: json['state']?.toString(),
     );
   }
 }
@@ -750,7 +926,7 @@ class FacebookAuthResponse {
   factory FacebookAuthResponse.fromJson(Map<String, dynamic> json) {
     return FacebookAuthResponse(
       success: json['success'] ?? false,
-      message: json['message'],
+      message: json['message']?.toString() ?? '',
       user: json['user'] != null ? FacebookUser.fromJson(json['user']) : null,
       pages: json['pages'] != null
           ? (json['pages'] as List)
@@ -771,6 +947,8 @@ class FacebookPageResponse {
   final String? coverPhotoUrl;
   final String? profilePicUrl;
   final String? createdAt;
+  final bool? autoReplyEnabled;
+  final bool? autoProcessComments;
 
   FacebookPageResponse({
     required this.id,
@@ -782,19 +960,25 @@ class FacebookPageResponse {
     this.coverPhotoUrl,
     this.profilePicUrl,
     this.createdAt,
+    this.autoReplyEnabled,
+    this.autoProcessComments,
   });
 
   factory FacebookPageResponse.fromJson(Map<String, dynamic> json) {
     return FacebookPageResponse(
-      id: json['id'],
-      pageId: json['page_id'],
-      name: json['name'],
-      category: json['category'],
-      fanCount: json['fan_count'],
+      id: json['id']?.toString() ?? '',
+      pageId: json['page_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      category: json['category']?.toString(),
+      fanCount: json['fan_count'] != null
+          ? int.tryParse(json['fan_count'].toString())
+          : null,
       isSelected: json['is_selected'] ?? false,
-      coverPhotoUrl: json['cover_photo_url'],
-      profilePicUrl: json['profile_pic_url'],
-      createdAt: json['created_at'],
+      coverPhotoUrl: json['cover_photo_url']?.toString(),
+      profilePicUrl: json['profile_pic_url']?.toString(),
+      createdAt: json['created_at']?.toString(),
+      autoReplyEnabled: json['auto_reply_enabled'],
+      autoProcessComments: json['auto_process_comments'],
     );
   }
 }
@@ -813,7 +997,7 @@ class SelectPageResponse {
   factory SelectPageResponse.fromJson(Map<String, dynamic> json) {
     return SelectPageResponse(
       success: json['success'] ?? false,
-      message: json['message'],
+      message: json['message']?.toString() ?? '',
       page: FacebookPageResponse.fromJson(json['page']),
     );
   }
@@ -865,16 +1049,16 @@ class CommentResponse {
 
   factory CommentResponse.fromJson(Map<String, dynamic> json) {
     return CommentResponse(
-      commentId: json['comment_id'],
-      message: json['message'],
-      authorName: json['author_name'],
-      pageId: json['page_id'],
-      postId: json['post_id'],
+      commentId: json['comment_id']?.toString() ?? '',
+      message: json['message']?.toString() ?? '',
+      authorName: json['author_name']?.toString(),
+      pageId: json['page_id']?.toString() ?? '',
+      postId: json['post_id']?.toString(),
       createdTime: json['created_time'] != null
-          ? DateTime.parse(json['created_time'])
+          ? DateTime.tryParse(json['created_time'].toString())?.toLocal()
           : null,
-      sentiment: json['sentiment'],
-      responseStatus: json['response_status'] ?? 'pending',
+      sentiment: json['sentiment']?.toString(),
+      responseStatus: json['response_status']?.toString() ?? 'pending',
     );
   }
 }
@@ -896,6 +1080,160 @@ class ReplyRequest {
       'reply_to_comment_id': replyToCommentId,
       'is_private': isPrivate,
     };
+  }
+}
+
+// ==================== NOUVEAUX MODÈLES D'API ====================
+
+class FacebookReplyHistory {
+  final String id;
+  final String commentId;
+  final String orderId;
+  final String message;
+  final String? facebookResponseId;
+  final DateTime sentAt;
+
+  FacebookReplyHistory({
+    required this.id,
+    required this.commentId,
+    required this.orderId,
+    required this.message,
+    this.facebookResponseId,
+    required this.sentAt,
+  });
+
+  factory FacebookReplyHistory.fromJson(Map<String, dynamic> json) {
+    return FacebookReplyHistory(
+      id: json['id']?.toString() ?? '',
+      commentId: json['comment_id']?.toString() ?? '',
+      orderId: json['order_id']?.toString() ?? '',
+      message: json['message']?.toString() ?? '',
+      facebookResponseId: json['facebook_response_id']?.toString(),
+      sentAt: json['sent_at'] != null
+          ? DateTime.tryParse(json['sent_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
+}
+
+class MessengerMessage {
+  final String id;
+  final String messageType;
+  final String senderId;
+  final String recipientId;
+  final String? facebookMessageId;
+  final String messageContent;
+  final Map<String, dynamic>? quickReplies;
+  final Map<String, dynamic>? attachments;
+  final String? orderId;
+  final String? commentId;
+  final String sellerId;
+  final String status;
+  final String? errorMessage;
+  final Map<String, dynamic>? metadata;
+  final String platform;
+  final DateTime sentAt;
+  final DateTime? deliveredAt;
+  final DateTime? readAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  MessengerMessage({
+    required this.id,
+    required this.messageType,
+    required this.senderId,
+    required this.recipientId,
+    this.facebookMessageId,
+    required this.messageContent,
+    this.quickReplies,
+    this.attachments,
+    this.orderId,
+    this.commentId,
+    required this.sellerId,
+    required this.status,
+    this.errorMessage,
+    this.metadata,
+    this.platform = 'facebook_messenger',
+    required this.sentAt,
+    this.deliveredAt,
+    this.readAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory MessengerMessage.fromJson(Map<String, dynamic> json) {
+    return MessengerMessage(
+      id: json['id']?.toString() ?? '',
+      messageType: json['message_type']?.toString() ?? '',
+      senderId: json['sender_id']?.toString() ?? '',
+      recipientId: json['recipient_id']?.toString() ?? '',
+      facebookMessageId: json['facebook_message_id']?.toString(),
+      messageContent: json['message_content']?.toString() ?? '',
+      quickReplies: json['quick_replies'] != null
+          ? Map<String, dynamic>.from(json['quick_replies'])
+          : null,
+      attachments: json['attachments'] != null
+          ? Map<String, dynamic>.from(json['attachments'])
+          : null,
+      orderId: json['order_id']?.toString(),
+      commentId: json['comment_id']?.toString(),
+      sellerId: json['seller_id']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'sent',
+      errorMessage: json['error_message']?.toString(),
+      metadata: json['metadata'] != null
+          ? Map<String, dynamic>.from(json['metadata'])
+          : null,
+      platform: json['platform']?.toString() ?? 'facebook_messenger',
+      sentAt: json['sent_at'] != null
+          ? DateTime.tryParse(json['sent_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      deliveredAt: json['delivered_at'] != null
+          ? DateTime.tryParse(json['delivered_at'].toString())
+          : null,
+      readAt: json['read_at'] != null
+          ? DateTime.tryParse(json['read_at'].toString())
+          : null,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
+
+  bool get isDelivered => status == 'delivered';
+  bool get isRead => status == 'read';
+  bool get isFailed => status == 'failed';
+}
+
+class FacebookMessageTemplate {
+  final String id;
+  final String templateType;
+  final String content;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  FacebookMessageTemplate({
+    required this.id,
+    required this.templateType,
+    required this.content,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory FacebookMessageTemplate.fromJson(Map<String, dynamic> json) {
+    return FacebookMessageTemplate(
+      id: json['id']?.toString() ?? '',
+      templateType: json['template_type']?.toString() ?? '',
+      content: json['content']?.toString() ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+    );
   }
 }
 

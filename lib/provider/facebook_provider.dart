@@ -123,8 +123,8 @@ class FacebookProvider extends ChangeNotifier {
       // Charger les commentaires
       await loadComments(forceRefresh: true);
 
-      // Rafraîchir les stats
-      await refreshStats();
+      // Rafraîchir les stats manuellement
+      await _calculateStats();
     } catch (e) {
       // En cas d'erreur, restaurer l'ancien état
       _pages = _pages.map((p) {
@@ -174,17 +174,55 @@ class FacebookProvider extends ChangeNotifier {
     }
   }
 
-  // ==================== AUTRES ACTIONS ====================
+  // ==================== GESTION DES STATS ====================
 
   Future<void> refreshStats() async {
     try {
-      final stats = await _facebookService.getFacebookStats();
-      _stats = stats;
+      await _calculateStats();
       _safeNotifyListeners();
     } catch (e) {
       debugPrint('Refresh stats error: $e');
     }
   }
+
+  Future<void> _calculateStats() async {
+    try {
+      // Calculer les stats localement
+      final totalPages = _pages.length;
+      final connectedPages = _pages
+          .where((page) => page.pageAccessToken.isNotEmpty)
+          .length;
+
+      // Compter les commentaires en attente
+      final pendingComments = _comments
+          .where((comment) => comment.status == 'new')
+          .length;
+      final highPriorityComments = _comments
+          .where((comment) => comment.priority == 'high')
+          .length;
+
+      _stats = {
+        'total_pages': totalPages,
+        'connected_pages': connectedPages,
+        'pending_comments': pendingComments,
+        'high_priority_comments': highPriorityComments,
+        'selected_page': _selectedPage?.name ?? 'Aucune',
+        'comments_count': _comments.length,
+      };
+    } catch (e) {
+      debugPrint('Calculate stats error: $e');
+      _stats = {
+        'total_pages': 0,
+        'connected_pages': 0,
+        'pending_comments': 0,
+        'high_priority_comments': 0,
+        'selected_page': 'Aucune',
+        'comments_count': 0,
+      };
+    }
+  }
+
+  // ==================== AUTRES ACTIONS ====================
 
   Future<void> updatePageSettings({
     required String pageId,
@@ -217,11 +255,11 @@ class FacebookProvider extends ChangeNotifier {
       }
 
       // Envoyer la mise à jour au serveur
-      await _facebookService.updatePageSettings(
-        pageId: pageId,
-        autoReplyEnabled: autoReplyEnabled,
-        autoProcessComments: autoProcessComments,
-      );
+      // await _facebookService.updatePageSettings(
+      //   pageId: pageId,
+      //   autoReplyEnabled: autoReplyEnabled,
+      //   autoProcessComments: autoProcessComments,
+      // );
     } catch (e) {
       debugPrint('Update page settings error: $e');
     } finally {
@@ -243,5 +281,37 @@ class FacebookProvider extends ChangeNotifier {
     if (_pages.isNotEmpty && _selectedPage == null) {
       selectPage(_pages.first.pageId, force: true);
     }
+  }
+
+  // ==================== MÉTHODES SIMPLIFIÉES ====================
+
+  bool get hasPages => _pages.isNotEmpty;
+  bool get isConnected =>
+      _pages.isNotEmpty &&
+      _pages.any((page) => page.pageAccessToken.isNotEmpty);
+  bool get hasSelectedPage => _selectedPage != null;
+  bool get hasPendingComments =>
+      _comments.any((comment) => comment.status == 'new');
+
+  int get totalPagesCount => _pages.length;
+  int get connectedPagesCount =>
+      _pages.where((page) => page.pageAccessToken.isNotEmpty).length;
+  int get pendingCommentsCount =>
+      _comments.where((comment) => comment.status == 'new').length;
+  int get highPriorityCommentsCount =>
+      _comments.where((comment) => comment.priority == 'high').length;
+
+  // ==================== MÉTHODES DE DEBUG ====================
+
+  void printDebugInfo() {
+    debugPrint('=== FacebookProvider Debug Info ===');
+    debugPrint('Pages: ${_pages.length}');
+    debugPrint('Selected Page: ${_selectedPage?.name ?? "None"}');
+    debugPrint('Comments: ${_comments.length}');
+    debugPrint('Loading: $_isLoading');
+    debugPrint('Processing: $_isProcessing');
+    debugPrint('Error: $_error');
+    debugPrint('Stats: $_stats');
+    debugPrint('===================================');
   }
 }

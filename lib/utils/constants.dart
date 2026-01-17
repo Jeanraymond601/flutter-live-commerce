@@ -1,14 +1,10 @@
 // lib/constants/constants.dart
 class Constants {
-  // ================================
-  // URL DE BASE - PRODUCTION
-  // ================================
-  static const String apiBaseUrl = 'https://9cbb628e8ee7.ngrok-free.app';
-
+  static const String apiBaseUrl = 'https://3d1a525dacf6.ngrok-free.app';
   static const String apiPrefix = '/api/v1';
 
   // ================================
-  // ENDPOINTS FACEBOOK COMPLETS
+  // ENDPOINTS FACEBOOK (CHEMINS SEULEMENT)
   // ================================
 
   // ====================
@@ -16,107 +12,126 @@ class Constants {
   // ====================
 
   // 1. GET /api/v1/facebook/login → Générer URL OAuth
-  static const String facebookLogin = '$apiPrefix/facebook/login';
-
-  // 2. GET /api/v1/facebook/callback → Callback OAuth
-  static const String facebookCallback = '$apiPrefix/facebook/callback';
-
-  // 3. GET /api/v1/facebook/disconnect → Déconnexion Facebook
-  static const String facebookDisconnect = '$apiPrefix/facebook/disconnect';
+  static const String facebookLogin =
+      '$apiPrefix/facebook/login'; // ← ENLEVEZ apiBaseUrl
+  static const String facebookCallback =
+      '$apiPrefix/facebook/callback'; // ← ENLEVEZ apiBaseUrl
+  static const String facebookDisconnect =
+      '$apiPrefix/facebook/disconnect'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // GESTION DES PAGES
   // ====================
 
-  // 4. GET /api/v1/facebook/pages → Liste des pages Facebook
-  static const String facebookPages = '$apiPrefix/facebook/pages';
-
-  // 5. POST /api/v1/facebook/pages/select → Sélectionner une page
-  static const String facebookPagesSelect = '$apiPrefix/facebook/pages/select';
+  static const String facebookPages =
+      '$apiPrefix/facebook/pages'; // ← ENLEVEZ apiBaseUrl
+  static const String facebookPagesSelect =
+      '$apiPrefix/facebook/pages/select'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // WEBHOOK MANAGEMENT
   // ====================
 
-  // 6. POST /api/v1/facebook/webhook/subscribe → Souscrire aux webhooks
   static const String facebookWebhookSubscribe =
-      '$apiPrefix/facebook/webhook/subscribe';
-
-  // 7. GET /api/v1/facebook/webhook → Validation webhook (GET)
-  static const String facebookWebhook = '$apiPrefix/facebook/webhook';
-
-  // 8. POST /api/v1/facebook/webhook → Réception webhook (POST)
-  static const String facebookWebhookReceive = '$apiPrefix/facebook/webhook';
-
-  // 9. GET /api/v1/facebook/webhook/stream → Stream SSE temps réel
+      '$apiPrefix/facebook/webhook/subscribe'; // ← ENLEVEZ apiBaseUrl
+  static const String facebookWebhook =
+      '$apiPrefix/facebook/webhook'; // ← ENLEVEZ apiBaseUrl
+  static const String facebookWebhookReceive =
+      '$apiPrefix/facebook/webhook'; // ← ENLEVEZ apiBaseUrl
   static const String facebookWebhookStream =
-      '$apiPrefix/facebook/webhook/stream';
-
-  // 10. GET /api/v1/facebook/webhook/health → Vérifier état webhooks
+      '$apiPrefix/facebook/webhook/stream'; // ← ENLEVEZ apiBaseUrl
   static const String facebookWebhookHealth =
-      '$apiPrefix/facebook/webhook/health';
+      '$apiPrefix/facebook/webhook/health'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // SYNCHRONISATION DONNÉES
   // ====================
 
-  // 11. POST /api/v1/facebook/sync → Synchroniser données Facebook
-  static const String facebookSync = '$apiPrefix/facebook/sync';
-
-  // 12. POST /api/v1/facebook/sync/start-periodic → Démarrer sync périodique
+  static const String facebookSync =
+      '$apiPrefix/facebook/sync'; // ← ENLEVEZ apiBaseUrl
   static const String facebookSyncStartPeriodic =
-      '$apiPrefix/facebook/sync/start-periodic';
+      '$apiPrefix/facebook/sync/start-periodic'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // GESTION DES COMMENTAIRES
   // ====================
 
-  // 13. GET /api/v1/facebook/comments → Liste commentaires avec filtres
-  static const String facebookComments = '$apiPrefix/facebook/comments';
-
-  // 14. POST /api/v1/facebook/comments/bulk-process → Traitement en masse
+  static const String facebookComments =
+      '$apiPrefix/facebook/comments'; // ← ENLEVEZ apiBaseUrl
   static const String facebookCommentsBulkProcess =
-      '$apiPrefix/facebook/comments/bulk-process';
+      '$apiPrefix/facebook/comments/bulk-process'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // GESTION DES MESSAGES
   // ====================
 
-  // 15. POST /api/v1/facebook/messages/{id}/reply → Répondre à un message
   static String facebookMessageReply(String messageId) =>
-      '$apiPrefix/facebook/messages/$messageId/reply';
+      '$apiPrefix/facebook/messages/$messageId/reply'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // LIVE COMMERCE ANALYTICS
   // ====================
 
-  // 16. GET /api/v1/facebook/live/{id}/analytics → Analytics live vidéo
   static String facebookLiveAnalytics(String liveId) =>
-      '$apiPrefix/facebook/live/$liveId/analytics';
+      '$apiPrefix/facebook/live/$liveId/analytics'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // EXPORT DONNÉES
   // ====================
 
-  // 17. GET /api/v1/facebook/export/comments → Exporter commentaires
   static const String facebookExportComments =
-      '$apiPrefix/facebook/export/comments';
+      '$apiPrefix/facebook/export/comments'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // NOTIFICATIONS
   // ====================
 
-  // 18. GET /api/v1/facebook/notifications/recent → Notifications récentes
   static const String facebookNotificationsRecent =
-      '$apiPrefix/facebook/notifications/recent';
+      '$apiPrefix/facebook/notifications/recent'; // ← ENLEVEZ apiBaseUrl
 
   // ====================
   // DEBUG & MONITORING
   // ====================
 
-  // 19. GET /api/v1/facebook/debug/seller-info → Info debug vendeur
   static const String facebookDebugSellerInfo =
-      '$apiPrefix/facebook/debug/seller-info';
+      '$apiPrefix/facebook/debug/seller-info'; // ← ENLEVEZ apiBaseUrl
+
+  // ====================
+  // GESTION DES PUBLICATIONS (POSTS)
+  // ====================
+
+  // Récupérer les publications avec commentaires
+  static const String facebookPosts = '$apiPrefix/facebook/posts';
+
+  // Récupérer une publication spécifique
+  static String facebookPostDetail(String postId) =>
+      '$apiPrefix/facebook/posts/$postId';
+
+  // Récupérer les commentaires d'une publication
+  static String facebookPostComments(String postId) =>
+      '$apiPrefix/facebook/posts/$postId/comments';
+
+  // Synchroniser les publications depuis Facebook
+  static const String facebookSyncPosts = '$apiPrefix/facebook/sync/posts';
+
+  // ====================
+  // GESTION DES LIVE VIDEOS
+  // ====================
+
+  // Récupérer les lives avec commentaires
+  static const String facebookLiveVideos = '$apiPrefix/facebook/live-videos';
+
+  // Récupérer un live spécifique
+  static String facebookLiveVideoDetail(String videoId) =>
+      '$apiPrefix/facebook/live-videos/$videoId';
+
+  // Récupérer les commentaires d'un live
+  static String facebookLiveVideoComments(String videoId) =>
+      '$apiPrefix/facebook/live-videos/$videoId/comments';
+
+  // Synchroniser les lives depuis Facebook
+  static const String facebookSyncLiveVideos =
+      '$apiPrefix/facebook/sync/live-videos';
 
   // ================================
   // ENDPOINTS D'AUTHENTIFICATION

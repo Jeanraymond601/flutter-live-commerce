@@ -130,12 +130,17 @@ class _DashboardListScreenState extends State<DashboardScreen> {
     product_service.ProductService productService,
   ) async {
     try {
-      final stats = await productService.getSellerStats();
-      if (mounted) {
-        setState(() => _productStats = stats);
+      // Appelle la méthode qui charge les stats
+      await productService.loadSellerStats();
+
+      // Récupère les stats depuis le getter
+      if (mounted && productService.stats != null) {
+        setState(() => _productStats = productService.stats!);
       }
     } catch (e) {
-      // Ignorer l'erreur, les stats ne sont pas critiques
+      // ignore: avoid_print
+      print('⚠️ Erreur chargement stats: $e');
+      // Les stats ne sont pas critiques, on peut continuer
     }
   }
 

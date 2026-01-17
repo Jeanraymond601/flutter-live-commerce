@@ -1,20 +1,16 @@
 // lib/screens/drivers/edit_driver_screen.dart
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, dead_code
 
 import 'package:commerce/utils/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../../models/driver.dart';
 import '../../services/driver_service.dart';
-import '../../widgets/zone_detector.dart';
-import '../../widgets/status_indicator.dart';
 
 class EditDriverScreen extends StatefulWidget {
   final Driver driver;
-
   const EditDriverScreen({super.key, required this.driver});
 
   @override
@@ -23,54 +19,40 @@ class EditDriverScreen extends StatefulWidget {
 
 class _EditDriverScreenState extends State<EditDriverScreen> {
   final GlobalKey<FormBuilderState> _formKey = GlobalKey<FormBuilderState>();
-  final TextEditingController _passwordController = TextEditingController();
-
-  String _detectedZone = '';
   bool _isLoading = false;
-  bool _showPassword = false;
-  bool _passwordChanged = false;
-  String? _selectedStatus;
+  bool _isMounted = false;
   late Driver _originalDriver;
 
   @override
   void initState() {
     super.initState();
+    _isMounted = true;
     _originalDriver = widget.driver;
-    _selectedStatus = widget.driver.statut;
-    _detectedZone = widget.driver.zone_livraison;
 
-    // Initialiser les valeurs du formulaire
+    // Initialiser les valeurs après un petit délai
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeForm();
+      if (_isMounted && _formKey.currentState != null) {
+        _formKey.currentState!.patchValue({
+          'full_name': widget.driver.fullName,
+          'email': widget.driver.email,
+          'telephone': widget.driver.telephone,
+          'adresse': widget.driver.adresse,
+          'statut': widget.driver.statut,
+          'disponibilite': widget.driver.disponibilite,
+        });
+      }
     });
-  }
-
-  void _initializeForm() {
-    if (_formKey.currentState != null) {
-      _formKey.currentState!.patchValue({
-        'full_name': widget.driver.fullName,
-        'email': widget.driver.email,
-        'telephone': widget.driver.telephone,
-        'adresse': widget.driver.adresse,
-        'password': '', // Mot de passe vide par défaut
-      });
-    }
   }
 
   @override
   void dispose() {
-    _passwordController.dispose();
+    _isMounted = false;
     super.dispose();
   }
 
   Future<void> _updateDriver() async {
     if (_formKey.currentState?.saveAndValidate() ?? false) {
       final formData = _formKey.currentState!.value;
-
-      if (_detectedZone.isEmpty) {
-        _showErrorSnackbar('Veuillez détecter la zone de livraison');
-        return;
-      }
 
       setState(() {
         _isLoading = true;
@@ -79,51 +61,47 @@ class _EditDriverScreenState extends State<EditDriverScreen> {
       try {
         final driverService = context.read<DriverService>();
 
-        // Préparer les données de mise à jour
         final updateData = <String, dynamic>{
-          'full_name': formData['full_name'],
-          'email': formData['email'],
-          'telephone': formData['telephone'],
-          'adresse': widget.driver.adresse, // On garde l'adresse originale
-          'zone_livraison': _detectedZone,
-          'statut': _selectedStatus,
-          'disponibilite': widget.driver.disponibilite,
+          'full_name': formData['full_name']?.toString().trim(),
+          'email': formData['email']?.toString().trim(),
+          'telephone': formData['telephone']?.toString().trim(),
+          'adresse': formData['adresse']?.toString().trim() ?? '',
+          'statut': formData['statut']?.toString().trim(),
+          'disponibilite':
+              formData['disponibilite'] ?? widget.driver.disponibilite,
         };
 
-        // Ajouter le mot de passe seulement s'il a été modifié
-        if (_passwordChanged && formData['password']?.isNotEmpty == true) {
-          updateData['password'] = formData['password'];
-        }
-
-        final updatedDriver = await driverService.updateDriver(
+        final result = await driverService.updateDriver(
           widget.driver.id,
           updateData,
         );
 
-        if (mounted) {
-          Navigator.of(context).pop(updatedDriver);
+        if (!_isMounted) return;
 
+        if (result['success'] == true) {
+          // Retourner true pour indiquer une mise à jour réussie
+          Navigator.of(context).pop(true);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
+            const SnackBar(
+              content: Text(
                 'Livreur modifié avec succès !',
                 style: TextStyle(color: Colors.white),
               ),
               backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
+              duration: Duration(seconds: 3),
               behavior: SnackBarBehavior.floating,
             ),
           );
+        } else {
+          _showErrorSnackbar(result['error']?.toString() ?? 'Erreur inconnue');
         }
       } catch (e) {
-        if (mounted) {
-          _showErrorSnackbar('Erreur: ${e.toString()}');
+        if (_isMounted) {
+          _showErrorSnackbar('Erreur: ${e.toString().split('\n').first}');
         }
       } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
+        if (_isMounted) {
+          setState(() => _isLoading = false);
         }
       }
     }
@@ -140,21 +118,17 @@ class _EditDriverScreenState extends State<EditDriverScreen> {
     );
   }
 
-  void _onZoneDetected(String zone) {
-    setState(() {
-      _detectedZone = zone;
-    });
-  }
-
   bool _hasChanges() {
-    final formData = _formKey.currentState?.value ?? {};
+    if (_formKey.currentState == null) return false;
+
+    final formData = _formKey.currentState!.value;
 
     return formData['full_name'] != _originalDriver.fullName ||
         formData['email'] != _originalDriver.email ||
         formData['telephone'] != _originalDriver.telephone ||
-        _detectedZone != _originalDriver.zone_livraison ||
-        _selectedStatus != _originalDriver.statut ||
-        (_passwordChanged && formData['password']?.isNotEmpty == true);
+        (formData['adresse'] ?? '') != (_originalDriver.adresse) ||
+        formData['statut'] != _originalDriver.statut ||
+        formData['disponibilite'] != _originalDriver.disponibilite;
   }
 
   Future<bool> _showDiscardDialog() async {
@@ -175,7 +149,9 @@ class _EditDriverScreenState extends State<EditDriverScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: const Text('QUITTER'),
           ),
         ],
@@ -185,567 +161,450 @@ class _EditDriverScreenState extends State<EditDriverScreen> {
     return shouldPop ?? false;
   }
 
-  Widget _buildFormField({
-    required String name,
-    required String label,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    List<FormFieldValidator<String>>? validators,
-    bool enabled = true,
-    bool isPassword = false,
-  }) {
-    return FormBuilderTextField(
-      name: name,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Constants.defaultRadius),
-        ),
-        filled: !enabled,
-        fillColor: !enabled ? Colors.grey[100] : null,
-        suffixIcon: isPassword
-            ? IconButton(
-                icon: Icon(
-                  _showPassword ? Icons.visibility : Icons.visibility_off,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _showPassword = !_showPassword;
-                  });
-                },
-              )
-            : null,
-      ),
-      keyboardType: keyboardType,
-      obscureText: isPassword && !_showPassword,
-      enabled: enabled,
-      validator: FormBuilderValidators.compose(validators ?? []),
-      textInputAction: TextInputAction.next,
-      onChanged: isPassword
-          ? (value) {
-              setState(() {
-                _passwordChanged = value?.isNotEmpty == true;
-              });
-            }
-          : null,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-
-        final shouldPop = await _showDiscardDialog();
-        if (shouldPop && mounted) {
-          Navigator.of(context).pop();
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Modifier Livreur'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () async {
-              if (!mounted) return;
-              final shouldPop = await _showDiscardDialog();
-              if (shouldPop && mounted) {
-                Navigator.of(context).pop();
-              }
-            },
-          ),
-          actions: [
-            if (_isLoading)
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(
-                      Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(Constants.defaultPadding),
-          child: FormBuilder(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header avec illustration
-                _buildHeader(),
-                const SizedBox(height: 24),
-
-                // Informations du livreur
-                _buildDriverInfo(),
-                const SizedBox(height: 16),
-
-                // Formulaire
-                _buildForm(),
-                const SizedBox(height: 24),
-
-                // Zone détectée
-                if (_detectedZone.isNotEmpty) _buildZoneCard(),
-                const SizedBox(height: 24),
-
-                // Boutons d'action
-                _buildActionButtons(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
+  // Carte en haut du formulaire avec les informations du livreur
+  Widget _buildDriverCard() {
     return Card(
-          elevation: 2,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withAlpha(25),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: Icon(
-                    Icons.edit,
-                    size: 30,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Modifier le livreur',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Modifiez les informations du livreur',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withAlpha(153), // 60% opacity
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .slide(
-          begin: const Offset(-0.5, 0),
-          end: Offset.zero,
-          duration: 400.ms,
-          curve: Curves.easeOut,
-        );
-  }
-
-  Widget _buildDriverInfo() {
-    return Card(
-      elevation: 1,
-      color: Colors.blue.withAlpha(7),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withAlpha(25),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(
-                Icons.person,
-                size: 20,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ID: ${widget.driver.id}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withAlpha(153), // 60% opacity
-                    ),
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).primaryColor.withOpacity(0.1),
+                  child: Icon(
+                    Icons.person,
+                    color: Theme.of(context).primaryColor,
                   ),
-                  Text(
-                    widget.driver.fullName,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            StatusIndicator(status: widget.driver.statut, compact: false),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildForm() {
-    return Column(
-          children: [
-            // Nom complet
-            _buildFormField(
-              name: 'full_name',
-              label: 'Nom complet',
-              icon: Icons.person,
-              validators: [
-                FormBuilderValidators.required(
-                  errorText: Constants.validationRequired,
                 ),
-                FormBuilderValidators.minLength(
-                  2,
-                  errorText: 'Minimum 2 caractères',
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Email
-            _buildFormField(
-              name: 'email',
-              label: 'Email',
-              icon: Icons.email,
-              keyboardType: TextInputType.emailAddress,
-              validators: [
-                FormBuilderValidators.required(
-                  errorText: Constants.validationRequired,
-                ),
-                FormBuilderValidators.email(
-                  errorText: Constants.validationEmail,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Téléphone
-            _buildFormField(
-              name: 'telephone',
-              label: 'Téléphone',
-              icon: Icons.phone,
-              keyboardType: TextInputType.phone,
-              validators: [
-                FormBuilderValidators.required(
-                  errorText: Constants.validationRequired,
-                ),
-                FormBuilderValidators.match(
-                  RegExp(r'^[0-9]{10}$'),
-                  errorText: Constants.validationPhone,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Adresse avec détection de zone
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Adresse complète',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 8),
-                ZoneDetector(
-                  onZoneDetected: _onZoneDetected,
-                  hintText: 'Entrez l\'adresse complète',
-                  showSuggestions: true,
-                  // initialValue a été retiré car non supporté par ZoneDetector
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Mot de passe (optionnel)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Mot de passe (laisser vide pour ne pas modifier)',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 8),
-                _buildFormField(
-                  name: 'password',
-                  label: 'Nouveau mot de passe',
-                  icon: Icons.lock,
-                  isPassword: true,
-                  validators: [
-                    if (_passwordChanged)
-                      FormBuilderValidators.minLength(
-                        8,
-                        errorText: 'Minimum 8 caractères',
-                      ),
-                    if (_passwordChanged)
-                      FormBuilderValidators.match(
-                        RegExp(
-                          r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$',
-                        ),
-                        errorText: Constants.validationPassword,
-                      ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Statut
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Statut',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: Constants.driverStatuses.map((status) {
-                    final isSelected = _selectedStatus == status;
-                    return ChoiceChip(
-                      label: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          StatusIndicator(
-                            status: status,
-                            compact: true,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _getStatusLabel(status),
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedStatus = selected
-                              ? status
-                              : widget.driver.statut;
-                        });
-                      },
-                      backgroundColor: isSelected
-                          ? _getStatusColor(status)
-                          : Colors.grey[200],
-                      selectedColor: _getStatusColor(status),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ],
-        )
-        .animate()
-        .fadeIn(duration: 400.ms)
-        .slide(
-          begin: const Offset(0, 0.5),
-          end: Offset.zero,
-          duration: 500.ms,
-          curve: Curves.easeOut,
-        );
-  }
-
-  Widget _buildZoneCard() {
-    return Card(
-          color: Colors.green.withAlpha(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green[600], size: 24),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Zone détectée',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.green[600],
-                          fontWeight: FontWeight.w500,
+                        widget.driver.fullName,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                       Text(
-                        _detectedZone,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        widget.driver.telephone,
+                        style: TextStyle(color: Colors.grey.shade600),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-          ),
-        )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .scaleY(begin: 0.8, end: 1, duration: 400.ms, curve: Curves.elasticOut);
+            const SizedBox(height: 12),
+            Divider(color: Colors.grey.shade300),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.email, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.driver.email,
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (widget.driver.adresse.isNotEmpty)
+              Column(
+                children: [
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.driver.adresse,
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: widget.driver.statut == 'actif'
+                        ? Colors.green.withOpacity(0.1)
+                        : widget.driver.statut == 'en_attente'
+                        ? Colors.orange.withOpacity(0.1)
+                        : widget.driver.statut == 'suspendu'
+                        ? Colors.red.withOpacity(0.1)
+                        : Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    widget.driver.statut.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: widget.driver.statut == 'actif'
+                          ? Colors.green
+                          : widget.driver.statut == 'en_attente'
+                          ? Colors.orange
+                          : widget.driver.statut == 'suspendu'
+                          ? Colors.red
+                          : Colors.grey,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: widget.driver.disponibilite
+                        ? Colors.blue.withOpacity(0.1)
+                        : Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    widget.driver.disponibilite ? 'Disponible' : 'Indisponible',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: widget.driver.disponibilite
+                          ? Colors.blue
+                          : Colors.grey,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildActionButtons() {
-    return Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () async {
-                  if (!mounted) return;
-                  final shouldPop = await _showDiscardDialog();
-                  if (shouldPop && mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      Constants.defaultRadius,
-                    ),
-                  ),
-                  side: BorderSide(color: Theme.of(context).colorScheme.error),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.cancel, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'ANNULER',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ],
-                ),
+  Widget _buildFormField({
+    required String name,
+    required String label,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    List<FormFieldValidator<String>>? validators,
+    int maxLines = 1,
+  }) {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        child: FormBuilderTextField(
+          name: name,
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: Icon(icon, color: Colors.blueGrey),
+            border: InputBorder.none,
+          ),
+          keyboardType: keyboardType,
+          validator: FormBuilderValidators.compose(validators ?? []),
+          maxLines: maxLines,
+          textInputAction: TextInputAction.next,
+        ),
+      ),
+    );
+  }
+
+  // Widget pour le champ de statut
+  Widget _buildStatusField() {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        child: FormBuilderDropdown<String>(
+          name: 'statut',
+          decoration: InputDecoration(
+            labelText: 'Statut',
+            prefixIcon: Icon(Icons.work, color: Colors.blueGrey),
+            border: InputBorder.none,
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: 'actif',
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green, size: 20),
+                  SizedBox(width: 8),
+                  Text('Actif'),
+                ],
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: _isLoading || !_hasChanges() ? null : _updateDriver,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      Constants.defaultRadius,
-                    ),
-                  ),
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  disabledBackgroundColor: Colors.grey[300],
-                ),
-                child: _isLoading
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(
-                            Theme.of(context).colorScheme.onPrimary,
-                          ),
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.save, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'ENREGISTRER',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(context).colorScheme.onPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
+            DropdownMenuItem(
+              value: 'en_attente',
+              child: Row(
+                children: [
+                  Icon(Icons.hourglass_empty, color: Colors.orange, size: 20),
+                  SizedBox(width: 8),
+                  Text('En attente'),
+                ],
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'suspendu',
+              child: Row(
+                children: [
+                  Icon(Icons.pause_circle, color: Colors.red, size: 20),
+                  SizedBox(width: 8),
+                  Text('Suspendu'),
+                ],
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'rejeté',
+              child: Row(
+                children: [
+                  Icon(Icons.cancel, color: Colors.grey, size: 20),
+                  SizedBox(width: 8),
+                  Text('Rejeté'),
+                ],
               ),
             ),
           ],
-        )
-        .animate()
-        .fadeIn(duration: 500.ms)
-        .slide(
-          begin: const Offset(0, 1),
-          end: Offset.zero,
-          duration: 600.ms,
-          curve: Curves.easeOut,
-        );
+          validator: FormBuilderValidators.required(
+            errorText: 'Le statut est requis',
+          ),
+        ),
+      ),
+    );
   }
 
-  String _getStatusLabel(String status) {
-    switch (status.toLowerCase()) {
-      case 'actif':
-        return 'Actif';
-      case 'en_attente':
-        return 'En attente';
-      case 'suspendu':
-        return 'Suspendu';
-      case 'rejeté':
-        return 'Rejeté';
-      default:
-        return status;
-    }
+  // Widget pour le champ de disponibilité
+  Widget _buildDisponibiliteField() {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        child: FormBuilderSwitch(
+          name: 'disponibilite',
+          decoration: InputDecoration(
+            labelText: 'Disponibilité',
+            prefixIcon: Icon(Icons.directions_car, color: Colors.blueGrey),
+            border: InputBorder.none,
+          ),
+          title: const Text('Disponible pour les livraisons'),
+          initialValue: widget.driver.disponibilite,
+        ),
+      ),
+    );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'actif':
-        return const Color(0xFF4CAF50);
-      case 'en_attente':
-        return const Color(0xFFFF9800);
-      case 'suspendu':
-        return const Color(0xFFF44336);
-      case 'rejeté':
-        return const Color(0xFF9E9E9E);
-      default:
-        return const Color(0xFF2196F3);
-    }
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: _showDiscardDialog,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Modifier Livreur'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              final shouldPop = await _showDiscardDialog();
+              if (shouldPop && _isMounted) Navigator.of(context).pop();
+            },
+          ),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Carte du livreur en haut
+              _buildDriverCard(),
+
+              const SizedBox(height: 8),
+              const Text(
+                'Modifier les informations',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueGrey,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Formulaire
+              FormBuilder(
+                key: _formKey,
+                initialValue: {
+                  'full_name': widget.driver.fullName,
+                  'email': widget.driver.email,
+                  'telephone': widget.driver.telephone,
+                  'adresse': widget.driver.adresse,
+                  'statut': widget.driver.statut,
+                  'disponibilite': widget.driver.disponibilite,
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildFormField(
+                      name: 'full_name',
+                      label: 'Nom complet',
+                      icon: Icons.person,
+                      validators: [
+                        FormBuilderValidators.required(
+                          errorText: Constants.validationRequired,
+                        ),
+                        FormBuilderValidators.minLength(
+                          2,
+                          errorText: 'Minimum 2 caractères',
+                        ),
+                      ],
+                    ),
+                    _buildFormField(
+                      name: 'email',
+                      label: 'Email',
+                      icon: Icons.email,
+                      keyboardType: TextInputType.emailAddress,
+                      validators: [
+                        FormBuilderValidators.required(
+                          errorText: Constants.validationRequired,
+                        ),
+                        FormBuilderValidators.email(
+                          errorText: Constants.validationEmail,
+                        ),
+                      ],
+                    ),
+                    _buildFormField(
+                      name: 'telephone',
+                      label: 'Téléphone',
+                      icon: Icons.phone,
+                      keyboardType: TextInputType.phone,
+                      validators: [
+                        FormBuilderValidators.required(
+                          errorText: Constants.validationRequired,
+                        ),
+                        FormBuilderValidators.match(
+                          RegExp(r'^[0-9]{10}$'),
+                          errorText: Constants.validationPhone,
+                        ),
+                      ],
+                    ),
+                    _buildFormField(
+                      name: 'adresse',
+                      label: 'Adresse',
+                      icon: Icons.location_on,
+                      maxLines: 2,
+                      validators: [
+                        FormBuilderValidators.required(
+                          errorText: Constants.validationRequired,
+                        ),
+                        FormBuilderValidators.minLength(
+                          5,
+                          errorText: 'Adresse trop courte',
+                        ),
+                      ],
+                    ),
+
+                    // Champ pour le statut
+                    _buildStatusField(),
+
+                    // Champ pour la disponibilité
+                    _buildDisponibiliteField(),
+
+                    const SizedBox(height: 32),
+
+                    // Boutons Enregistrer/Annuler
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _updateDriver,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'ENREGISTRER',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final shouldPop = await _showDiscardDialog();
+                              if (shouldPop && _isMounted) {
+                                Navigator.of(context).pop();
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              side: const BorderSide(color: Colors.red),
+                            ),
+                            child: const Text(
+                              'ANNULER',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

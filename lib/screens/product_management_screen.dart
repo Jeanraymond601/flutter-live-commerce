@@ -1,17 +1,15 @@
-// lib/screens/product_management_screen.dart - VERSION CORRIGÉE
-
-// ignore_for_file: avoid_print, use_build_context_synchronously
+// ignore_for_file: avoid_print
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pull_to_refresh/pull_to_refresh.dart';
 
 import '../../models/product.dart';
 import '../../screens/addeditproductscreen.dart';
 import '../../services/product_service.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/product.dart';
-import '../../widgets/product_stats_card.dart';
 
 class ProductManagementScreen extends StatefulWidget {
   const ProductManagementScreen({super.key});
@@ -22,343 +20,398 @@ class ProductManagementScreen extends StatefulWidget {
 }
 
 class _ProductManagementScreenState extends State<ProductManagementScreen> {
+  final RefreshController _refreshController = RefreshController();
+  final TextEditingController _searchController = TextEditingController();
+
   late ProductService _productService;
   late AuthService _authService;
-  late ScrollController _scrollController;
-  final TextEditingController _searchController = TextEditingController();
-  Timer? _searchDebounce;
 
   List<Product> _products = [];
-  bool _isLoading = false;
-  bool _isLoadingMore = false;
-  String? _error;
-  String _searchQuery = '';
-  int _currentPage = 1;
-  bool _hasMore = true;
-  Map<String, dynamic>? _stats;
+  List<Product> _filteredProducts = [];
 
-  // NOUVEAU: États pour la pagination
-  bool _showFilterOptions = false;
-  bool? _filterActiveOnly;
-  String _selectedCategory = 'Toutes';
-  List<String> _categories = ['Toutes'];
+  final Map<String, int> _categoryCounts = {};
+  Map<String, int> _statusCounts = {};
+
+  bool _isLoading = true;
+
+  String? _selectedCategory;
+  String? _selectedStatus;
+  String _searchQuery = '';
+
+  Timer? _searchDebounce;
+  bool _initialized = false;
+
+  // ====================== LIFECYCLE ======================
 
   @override
   void initState() {
     super.initState();
-
-    print('🚀 ProductManagementScreen initState');
-    _scrollController = ScrollController()..addListener(_scrollListener);
-    _searchController.addListener(_onSearchChanged);
+    // Initialiser après le premier frame
+    WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _productService = Provider.of<ProductService>(context, listen: false);
-    _authService = Provider.of<AuthService>(context, listen: false);
 
-    print('📱 ProductManagementScreen didChangeDependencies');
+    // CORRECTION: Récupérer les services ici, pas dans didChangeDependencies
+    if (!_initialized) {
+      _productService = context.read<ProductService>();
+      _authService = context.read<AuthService>();
+    }
+  }
 
-    // Vérifier l'authentification
+  Future<void> _init() async {
+    if (_initialized) return;
+
+    // Attendre que le widget soit monté
+    if (!mounted) return;
+
+    _initialized = true;
+
     if (!_authService.isAuthenticated) {
       _navigateToLogin();
       return;
     }
 
-    _loadInitialData();
+    await _loadProducts();
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
-  // ============================================
-  // AUTHENTIFICATION ET NAVIGATION
-  // ============================================
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    _searchController.dispose();
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
 
-  void _navigateToLogin() {
-    Future.microtask(() {
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+  // ====================== DATA ======================
+
+  Future<void> _loadProducts({bool refresh = false}) async {
+    try {
+      await _productService.loadMyProducts();
+
+      if (mounted) {
+        _syncFromProvider();
+        if (refresh) {
+          _refreshController.refreshCompleted();
+        }
+      }
+    } catch (e) {
+      print('❌ Erreur chargement produits: $e');
+
+      if (mounted) {
+        if (refresh) {
+          _refreshController.refreshFailed();
+        }
+        _showError('Erreur de chargement: $e');
+      }
+    }
+  }
+
+  void _syncFromProvider() {
+    if (!mounted) return;
+
+    setState(() {
+      _products = List.from(_productService.products);
+      _computeStats();
+      _filteredProducts = _applyFilters();
     });
   }
 
-  Future<bool> _checkAuth() async {
-    if (!_authService.isAuthenticated) {
-      _showSessionExpired();
-      return false;
+  void _computeStats() {
+    _categoryCounts.clear();
+    _statusCounts = {'all': _products.length, 'actif': 0, 'inactif': 0};
+
+    for (final p in _products) {
+      p.isActive
+          ? _statusCounts['actif'] = (_statusCounts['actif'] ?? 0) + 1
+          : _statusCounts['inactif'] = (_statusCounts['inactif'] ?? 0) + 1;
+
+      final cat = p.categoryName.isNotEmpty ? p.categoryName : 'Sans catégorie';
+      _categoryCounts[cat] = (_categoryCounts[cat] ?? 0) + 1;
     }
-    return true;
   }
 
-  void _showSessionExpired() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Session expirée. Veuillez vous reconnecter.'),
-        backgroundColor: Colors.red,
+  List<Product> _applyFilters() {
+    return _products.where((p) {
+      if (_selectedStatus != null) {
+        if (_selectedStatus == 'actif' && !p.isActive) return false;
+        if (_selectedStatus == 'inactif' && p.isActive) return false;
+      }
+
+      if (_selectedCategory != null) {
+        final cat = p.categoryName.isNotEmpty
+            ? p.categoryName
+            : 'Sans catégorie';
+        if (cat != _selectedCategory) return false;
+      }
+
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        return p.name.toLowerCase().contains(q) ||
+            p.codeArticle.toLowerCase().contains(q) ||
+            (p.description?.toLowerCase().contains(q) ?? false);
+      }
+
+      return true;
+    }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  // ====================== UI ======================
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Produits'), elevation: 1),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _navigateToCreateProduct,
+        icon: const Icon(Icons.add),
+        label: const Text('Ajouter'),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildSearchBar(),
+            if (_products.isNotEmpty) _buildStatusSection(),
+            if (_products.isNotEmpty) _buildCategorySection(),
+            _buildHeaderCount(),
+            Expanded(child: _buildProductsList()),
+          ],
+        ),
       ),
     );
-    _navigateToLogin();
   }
 
-  // ============================================
-  // CHARGEMENT DES DONNÉES (CORRIGÉ)
-  // ============================================
+  // ====================== WIDGETS ======================
 
-  Future<void> _loadInitialData() async {
-    print('🔄 Début _loadInitialData');
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) {
+          _searchDebounce?.cancel();
+          _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+            if (mounted) {
+              setState(() {
+                _searchQuery = value;
+                _filteredProducts = _applyFilters();
+              });
+            }
+          });
+        },
+        decoration: InputDecoration(
+          hintText: 'Rechercher...',
+          prefixIcon: const Icon(Icons.search),
+          filled: true,
+          fillColor: Colors.grey.shade100,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(28),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
 
-    if (!await _checkAuth()) return;
+  Widget _buildStatusSection() {
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: [
+          _statusChip(null, 'Tous', _statusCounts['all'] ?? 0),
+          _statusChip('actif', 'Actifs', _statusCounts['actif'] ?? 0),
+          _statusChip('inactif', 'Inactifs', _statusCounts['inactif'] ?? 0),
+        ],
+      ),
+    );
+  }
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  Widget _statusChip(String? value, String label, int count) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text('$label ($count)'),
+        selected: _selectedStatus == value,
+        onSelected: (_) {
+          if (mounted) {
+            setState(() {
+              _selectedStatus = _selectedStatus == value ? null : value;
+              _filteredProducts = _applyFilters();
+            });
+          }
+        },
+      ),
+    );
+  }
 
-    try {
-      await Future.wait([
-        _loadMyProducts(refresh: true),
-        _loadCategories(),
-        _loadStats(),
-      ]);
-    } catch (e) {
-      print('💥 Erreur chargement initial: $e');
-      setState(() {
-        _error = e.toString();
-      });
-      _showError('Erreur lors du chargement: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+  Widget _buildCategorySection() {
+    final categories = _categoryCounts.entries.toList();
+
+    return categories.isNotEmpty
+        ? SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: categories.map((e) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text('${e.key} (${e.value})'),
+                    selected: _selectedCategory == e.key,
+                    onSelected: (_) {
+                      if (mounted) {
+                        setState(() {
+                          _selectedCategory = _selectedCategory == e.key
+                              ? null
+                              : e.key;
+                          _filteredProducts = _applyFilters();
+                        });
+                      }
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          )
+        : const SizedBox.shrink();
+  }
+
+  Widget _buildHeaderCount() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          '${_filteredProducts.length} produit(s)',
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductsList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
     }
-  }
 
-  Future<void> _loadMyProducts({bool refresh = false}) async {
-    print('📦 Début _loadMyProducts');
-
-    if (!await _checkAuth()) return;
-
-    try {
-      if (refresh) {
-        _currentPage = 1;
-        _hasMore = true;
-      }
-
-      // Utiliser la NOUVELLE méthode du service corrigé
-      await _productService.loadMyProducts(
-        isActive: _filterActiveOnly,
-        page: _currentPage,
-        size: 20,
+    if (_products.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.inventory_2_outlined,
+              size: 64,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Aucun produit',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Commencez par ajouter votre premier produit',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
       );
-
-      setState(() {
-        if (refresh) {
-          _products = List.from(_productService.products);
-        } else {
-          _products.addAll(_productService.products);
-        }
-
-        _hasMore = _productService.products.isNotEmpty;
-        if (!refresh) _currentPage++;
-
-        print('✅ ${_products.length} produits chargés (page $_currentPage)');
-      });
-    } catch (e) {
-      print('💥 Erreur _loadMyProducts: $e');
-      if (e.toString().contains('401') || e.toString().contains('Session')) {
-        _showSessionExpired();
-      } else {
-        rethrow;
-      }
-    }
-  }
-
-  Future<void> _loadMore() async {
-    if (!await _checkAuth() ||
-        _isLoadingMore ||
-        !_hasMore ||
-        _searchQuery.isNotEmpty) {
-      return;
     }
 
-    setState(() {
-      _isLoadingMore = true;
-    });
-
-    try {
-      await _loadMyProducts(refresh: false);
-    } finally {
-      setState(() {
-        _isLoadingMore = false;
-      });
+    if (_filteredProducts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.search_off, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(
+              'Aucun résultat',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Essayez avec d\'autres filtres',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
     }
+
+    return SmartRefresher(
+      controller: _refreshController,
+      enablePullDown: true,
+      onRefresh: () => _loadProducts(refresh: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: _filteredProducts.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (_, i) {
+          final product = _filteredProducts[i];
+          return ProductCard(
+            product: product,
+            onEdit: () => _editProduct(product),
+            onDelete: () => _deleteProduct(product),
+          );
+        },
+      ),
+    );
   }
 
-  Future<void> _loadStats() async {
-    if (!await _checkAuth()) return;
+  // ====================== ACTIONS ======================
 
-    try {
-      final stats = await _productService.getSellerStats();
-      setState(() {
-        _stats = stats;
-        print('📊 Stats chargées: $stats');
-      });
-    } catch (e) {
-      print('⚠️ Erreur statistiques: $e');
-    }
-  }
-
-  Future<void> _loadCategories() async {
-    if (!await _checkAuth()) return;
-
-    try {
-      final categories = await _productService.getSellerCategories();
-      setState(() {
-        _categories = ['Toutes', ...categories];
-        print('🗂️ Catégories chargées: $_categories');
-      });
-    } catch (e) {
-      print('⚠️ Erreur catégories: $e');
-    }
-  }
-
-  // ============================================
-  // RECHERCHE ET FILTRAGE
-  // ============================================
-
-  void _onSearchChanged() {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
-      final query = _searchController.text;
-      _performSearch(query);
-    });
-  }
-
-  Future<void> _performSearch(String query) async {
-    if (!await _checkAuth()) return;
-
-    setState(() {
-      _searchQuery = query;
-      _isLoading = true;
-    });
-
-    try {
-      if (query.isEmpty) {
-        await _loadMyProducts(refresh: true);
-      } else {
-        final results = await _productService.searchProducts(
-          query: query,
-          limit: 20,
-        );
-        setState(() {
-          _products = results;
-          _hasMore = false;
-        });
-      }
-    } catch (e) {
-      _showError('Erreur recherche: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _clearSearch() {
-    _searchController.clear();
-    setState(() {
-      _searchQuery = '';
-    });
-    _loadMyProducts(refresh: true);
-  }
-
-  void _applyFilter() {
-    setState(() {
-      _showFilterOptions = false;
-    });
-    _loadMyProducts(refresh: true);
-  }
-
-  void _clearFilters() {
-    setState(() {
-      _filterActiveOnly = null;
-      _selectedCategory = 'Toutes';
-    });
-    _loadMyProducts(refresh: true);
-  }
-
-  // ============================================
-  // CRUD PRODUITS
-  // ============================================
-
-  Future<void> _addProduct() async {
-    print('➕ Début _addProduct');
-
-    if (!await _checkAuth()) return;
-
+  Future<void> _navigateToCreateProduct() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) =>
-            const AddEditProductScreen(), // Pas besoin de sellerId
-      ),
+      MaterialPageRoute(builder: (_) => const AddEditProductScreen()),
     );
 
-    if (result != null && result is Product) {
-      print('🎉 Produit créé: ${result.id}');
-      setState(() {
-        _products.insert(0, result);
-      });
-      _showSuccess('Produit créé avec succès!');
-      await _loadStats();
-      await _loadCategories();
+    // Rafraîchir si un produit a été ajouté
+    if (result == true && mounted) {
+      await _loadProducts();
     }
   }
 
   Future<void> _editProduct(Product product) async {
-    if (!await _checkAuth()) return;
-
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => AddEditProductScreen(product: product),
-      ),
+      MaterialPageRoute(builder: (_) => AddEditProductScreen(product: product)),
     );
 
-    if (result != null) {
-      if (result is Product) {
-        final index = _products.indexWhere((p) => p.id == result.id);
-        if (index != -1) {
-          setState(() {
-            _products[index] = result;
-          });
-        }
-        _showSuccess('Produit mis à jour!');
-      } else if (result == 'deleted') {
-        setState(() {
-          _products.removeWhere((p) => p.id == product.id);
-        });
-        _showSuccess('Produit supprimé!');
-        await _loadStats();
-        await _loadCategories();
-      }
+    // Rafraîchir si un produit a été modifié
+    if (result == true && mounted) {
+      await _loadProducts();
     }
   }
 
   Future<void> _deleteProduct(Product product) async {
-    if (!await _checkAuth()) return;
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Supprimer'),
-        content: const Text('Voulez-vous vraiment supprimer ce produit?'),
+        title: const Text('Supprimer le produit'),
+        content: Text('Êtes-vous sûr de vouloir supprimer "${product.name}" ?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Annuler'),
           ),
-          ElevatedButton(
+          TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Supprimer'),
+            child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -367,352 +420,34 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
     if (confirmed == true) {
       try {
         await _productService.deleteProduct(product.id!);
-        setState(() {
-          _products.removeWhere((p) => p.id == product.id);
-        });
-        _showSuccess('Produit supprimé!');
-        await _loadStats();
-        await _loadCategories();
+        if (mounted) {
+          await _loadProducts();
+          // ignore: use_build_context_synchronously
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Produit supprimé avec succès')),
+          );
+        }
       } catch (e) {
-        _showError('Erreur suppression: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur lors de la suppression: $e')),
+          );
+        }
       }
     }
   }
 
-  // ============================================
-  // WIDGET BUILDERS
-  // ============================================
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Rechercher un produit...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: _clearSearch,
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.filter_list),
-                onPressed: () {
-                  setState(() {
-                    _showFilterOptions = !_showFilterOptions;
-                  });
-                },
-                tooltip: 'Filtrer',
-              ),
-              if (_filterActiveOnly != null || _selectedCategory != 'Toutes')
-                Chip(
-                  label: const Text('Filtres actifs'),
-                  onDeleted: _clearFilters,
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterOptions() {
-    if (!_showFilterOptions) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        border: Border.all(color: Colors.grey[200]!),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Filtrer par:',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-
-          // Filtre statut
-          Row(
-            children: [
-              const Text('Statut:'),
-              const SizedBox(width: 16),
-              ChoiceChip(
-                label: const Text('Tous'),
-                selected: _filterActiveOnly == null,
-                onSelected: (_) => setState(() => _filterActiveOnly = null),
-              ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Actifs'),
-                selected: _filterActiveOnly == true,
-                onSelected: (_) => setState(() => _filterActiveOnly = true),
-              ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Inactifs'),
-                selected: _filterActiveOnly == false,
-                onSelected: (_) => setState(() => _filterActiveOnly = false),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Filtre catégorie
-          const Text('Catégorie:'),
-          Wrap(
-            spacing: 8,
-            children: _categories.map((category) {
-              return ChoiceChip(
-                label: Text(category),
-                selected: _selectedCategory == category,
-                onSelected: (_) => setState(() => _selectedCategory = category),
-              );
-            }).toList(),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Boutons d'action
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _showFilterOptions = false;
-                  });
-                },
-                child: const Text('Annuler'),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _applyFilter,
-                child: const Text('Appliquer'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProductList() {
-    // Appliquer les filtres locaux si nécessaire
-    List<Product> filteredProducts = _products;
-
-    if (_selectedCategory != 'Toutes') {
-      filteredProducts = filteredProducts
-          .where((p) => p.categoryName == _selectedCategory)
-          .toList();
-    }
-
-    if (_filterActiveOnly != null) {
-      filteredProducts = filteredProducts
-          .where((p) => p.isActive == _filterActiveOnly)
-          .toList();
-    }
-
-    if (filteredProducts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inventory, size: 80, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              _searchQuery.isNotEmpty
-                  ? 'Aucun résultat pour "$_searchQuery"'
-                  : 'Aucun produit',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _addProduct,
-              icon: const Icon(Icons.add),
-              label: const Text('Ajouter un produit'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.all(16),
-      itemCount:
-          filteredProducts.length + (_hasMore && _searchQuery.isEmpty ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= filteredProducts.length) {
-          return _buildLoadMore();
-        }
-
-        final product = filteredProducts[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: ProductCard(
-            product: product,
-            onTap: () => _editProduct(product),
-            onEdit: () => _editProduct(product),
-            onDelete: () => _deleteProduct(product),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildLoadMore() {
-    if (!_hasMore || _searchQuery.isNotEmpty) return Container();
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Center(
-        child: _isLoadingMore
-            ? const CircularProgressIndicator()
-            : ElevatedButton(
-                onPressed: _loadMore,
-                child: const Text('Charger plus'),
-              ),
-      ),
-    );
-  }
-
-  Widget _buildBody() {
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error, size: 80, color: Colors.red),
-            const SizedBox(height: 16),
-            Text('Erreur', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(_error!, textAlign: TextAlign.center),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _loadInitialData,
-              child: const Text('Réessayer'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_isLoading && _products.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Chargement...'),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        await _loadMyProducts(refresh: true);
-        await _loadStats();
-        await _loadCategories();
-      },
-      child: Column(
-        children: [
-          _buildFilterOptions(),
-          Expanded(child: _buildProductList()),
-        ],
-      ),
-    );
-  }
-
-  // ============================================
-  // UTILITAIRES
-  // ============================================
-
-  void _scrollListener() {
-    if (_scrollController.position.pixels ==
-        _scrollController.position.maxScrollExtent) {
-      _loadMore();
+  void _navigateToLogin() {
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
     }
   }
 
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
-    );
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
-
-  @override
-  void dispose() {
-    _searchDebounce?.cancel();
-    _scrollController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mes Produits'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _addProduct,
-            tooltip: 'Ajouter un produit',
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildSearchBar(),
-            if (_stats != null && _searchQuery.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ProductStatsCard(
-                  stats: ProductStats(
-                    totalProducts: _stats!['total_products']?.toInt() ?? 0,
-                    activeProducts: _stats!['active_products']?.toInt() ?? 0,
-                    categoriesCount: _stats!['categories_count']?.toInt() ?? 0,
-                    totalStock: _stats!['total_stock']?.toInt() ?? 0,
-                    totalValue: _stats!['total_value']?.toDouble() ?? 0.0,
-                  ),
-                ),
-              ),
-            const SizedBox(height: 8),
-            Expanded(child: _buildBody()),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addProduct,
-        tooltip: 'Ajouter un produit',
-        child: const Icon(Icons.add),
-      ),
-    );
+  void _showError(String msg) {
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+    }
   }
 }

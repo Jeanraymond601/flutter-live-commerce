@@ -1,5 +1,5 @@
 // lib/widgets/driver_card.dart
-// ignore_for_file: deprecated_member_use
+// VERSION UX PRO MOBILE – AVATAR AVEC INITIALES + MENU ACTIONS STYLÉ
 
 import 'package:flutter/material.dart';
 import '../models/driver.dart';
@@ -7,20 +7,27 @@ import '../utils/constants.dart';
 
 class DriverCard extends StatelessWidget {
   final Driver driver;
-  final VoidCallback? onTap;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
+  final VoidCallback? onEdit; // Ajout de la fonction onEdit
+  final VoidCallback? onDelete; // Ajout de la fonction onDelete
   final bool isSelected;
 
   const DriverCard({
     super.key,
     required this.driver,
-    this.onTap,
     this.onEdit,
     this.onDelete,
     this.isSelected = false,
   });
 
+  // ================= INITIALS =================
+  String get _initials {
+    final parts = driver.fullName.trim().split(' ');
+    if (parts.isEmpty) return '';
+    if (parts.length == 1) return parts.first.substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
+  // ================= BUILD =================
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -36,24 +43,17 @@ class DriverCard extends StatelessWidget {
             : BorderSide.none,
       ),
       child: InkWell(
-        onTap: onTap,
         borderRadius: BorderRadius.circular(Constants.defaultRadius),
+        onTap: null, // DÉSACTIVÉ - L'utilisateur doit utiliser le menu
         child: Padding(
           padding: const EdgeInsets.all(Constants.defaultPadding),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header avec nom et actions
               _buildHeader(context),
-
               const SizedBox(height: 12),
-
-              // Informations simplifiées du livreur
               _buildDriverInfo(),
-
-              const SizedBox(height: 8),
-
-              // Status et zone
+              const SizedBox(height: 10),
               _buildBottomInfo(),
             ],
           ),
@@ -62,31 +62,35 @@ class DriverCard extends StatelessWidget {
     );
   }
 
+  // ================= HEADER =================
   Widget _buildHeader(BuildContext context) {
     return Row(
       children: [
-        // Avatar
+        // AVATAR AVEC INITIALES
         Container(
-          width: Constants.driverAvatarSize,
-          height: Constants.driverAvatarSize,
+          width: 54,
+          height: 54,
           decoration: BoxDecoration(
+            shape: BoxShape.circle,
             color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(Constants.driverAvatarSize / 2),
             border: Border.all(
               color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
               width: 1.5,
             ),
           ),
-          child: Icon(
-            Icons.person,
-            size: Constants.driverAvatarSize * 0.6,
-            color: Theme.of(context).colorScheme.primary,
+          child: Center(
+            child: Text(
+              _initials,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
           ),
         ),
-
         const SizedBox(width: 12),
-
-        // Nom et email
+        // NOM + TEL
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -99,65 +103,88 @@ class DriverCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+              const SizedBox(height: 2),
               Text(
                 driver.telephone,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withOpacity(0.6),
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
         ),
-
-        // Menu des actions (trois points)
-        if (onEdit != null || onDelete != null)
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            itemBuilder: (context) => [
-              if (onEdit != null)
-                const PopupMenuItem<String>(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, size: 20),
-                      SizedBox(width: 8),
-                      Text('Modifier'),
-                    ],
-                  ),
-                ),
-              if (onDelete != null)
-                const PopupMenuItem<String>(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, size: 20, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Supprimer', style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-            ],
-            onSelected: (value) {
-              if (value == 'edit' && onEdit != null) {
-                onEdit!();
-              } else if (value == 'delete' && onDelete != null) {
-                onDelete!();
-              }
-            },
-          ),
+        // ================= MENU ACTIONS =================
+        // Toujours afficher le menu d'actions
+        _buildActionsMenu(),
       ],
     );
   }
 
+  // ================= MENU D'ACTIONS =================
+  Widget _buildActionsMenu() {
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert, color: Colors.grey[700]),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 3,
+      onSelected: (value) {
+        if (value == 'edit' && onEdit != null) {
+          onEdit!(); // Appel direct de la fonction onEdit
+        }
+        if (value == 'delete' && onDelete != null) {
+          onDelete!(); // Appel direct de la fonction onDelete
+        }
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'edit',
+          enabled: onEdit != null,
+          child: Row(
+            children: [
+              Icon(
+                Icons.edit,
+                size: 18,
+                color: onEdit != null ? Colors.blueAccent : Colors.grey,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Modifier',
+                style: TextStyle(
+                  color: onEdit != null ? Colors.black87 : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          enabled: onDelete != null,
+          child: Row(
+            children: [
+              Icon(
+                Icons.delete,
+                size: 18,
+                color: onDelete != null ? Colors.red : Colors.grey,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Supprimer',
+                style: TextStyle(
+                  color: onDelete != null ? Colors.red : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ================= INFO =================
   Widget _buildDriverInfo() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Email
         Row(
           children: [
             Icon(Icons.email, size: 16, color: Colors.grey[600]),
@@ -172,10 +199,7 @@ class DriverCard extends StatelessWidget {
             ),
           ],
         ),
-
         const SizedBox(height: 6),
-
-        // Zone de livraison
         Row(
           children: [
             Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
@@ -197,69 +221,51 @@ class DriverCard extends StatelessWidget {
     );
   }
 
+  // ================= STATUS =================
   Widget _buildBottomInfo() {
     return Row(
       children: [
-        // Statut
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Color(driver.statusColor).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _getStatusIcon(driver.statut),
-                size: 14,
-                color: Color(driver.statusColor),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                driver.statusDisplay,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: Color(driver.statusColor),
-                ),
-              ),
-            ],
-          ),
+        _buildStatusChip(
+          icon: _getStatusIcon(driver.statut),
+          label: driver.statusDisplay,
+          color: Color(driver.statusColor),
         ),
-
         const Spacer(),
-
-        // Disponibilité
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: driver.disponibilite
-                ? Colors.green.withOpacity(0.1)
-                : Colors.red.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                driver.disponibilite ? Icons.check_circle : Icons.cancel,
-                size: 14,
-                color: driver.disponibilite ? Colors.green : Colors.red,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                driver.availabilityDisplay,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: driver.disponibilite ? Colors.green : Colors.red,
-                ),
-              ),
-            ],
-          ),
+        _buildStatusChip(
+          icon: driver.disponibilite ? Icons.check_circle : Icons.cancel,
+          label: driver.availabilityDisplay,
+          color: driver.disponibilite ? Colors.green : Colors.red,
         ),
       ],
+    );
+  }
+
+  Widget _buildStatusChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -274,121 +280,7 @@ class DriverCard extends StatelessWidget {
       case 'rejeté':
         return Icons.cancel;
       default:
-        return Icons.help;
+        return Icons.help_outline;
     }
-  }
-}
-
-// Variante compacte pour les listes denses
-class DriverCompactCard extends StatelessWidget {
-  final Driver driver;
-  final VoidCallback? onTap;
-
-  const DriverCompactCard({super.key, required this.driver, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              // Avatar avec badge de statut
-              Stack(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Icon(
-                      Icons.person,
-                      size: 24,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: Color(driver.statusColor),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Colors.white, width: 1.5),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(width: 12),
-
-              // Infos principales
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      driver.fullName,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      driver.telephone,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-
-              // Indicateurs
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: driver.disponibilite
-                          ? Colors.green.withOpacity(0.1)
-                          : Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      driver.disponibilite ? 'Dispo' : 'Indispo',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: driver.disponibilite ? Colors.green : Colors.red,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }

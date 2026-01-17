@@ -1,6 +1,7 @@
-// lib/screens/drivers/driver_list_screen.dart
-// ignore_for_file: deprecated_member_use, unrelated_type_equality_checks
+// lib/screens/drivers/driver_list_screen.dart - VERSION CORRIGÉE
+// ignore_for_file: use_build_context_synchronously
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
@@ -25,121 +26,131 @@ class _DriverListScreenState extends State<DriverListScreen> {
 
   List<Driver> _drivers = [];
   List<Driver> _filteredDrivers = [];
+  Map<String, int> _statusCounts = {};
+
   bool _isLoading = true;
-  bool _isLoadingStats = true;
   String? _selectedStatus;
   String _searchQuery = '';
-  Map<String, dynamic>? _stats;
+
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
-    _loadInitialData();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDrivers());
   }
 
   @override
   void dispose() {
     _refreshController.dispose();
     _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadInitialData() async {
-    await _loadDrivers();
-    await _loadStats();
-    await _loadAvailableZones();
-  }
+  // ======================= DATA =======================
 
   Future<void> _loadDrivers({bool refresh = false}) async {
     if (!mounted) return;
 
-    setState(() {
-      if (refresh) {
-        _isLoading = true;
-      }
-    });
+    setState(() => _isLoading = true);
 
     try {
-      final driverService = context.read<DriverService>();
-      await driverService.initializeToken();
-
-      final response = await driverService.getDrivers(
+      final service = context.read<DriverService>();
+      final response = await service.getDrivers(
+        page: 1,
+        pageSize: 50,
         status: _selectedStatus,
         search: _searchQuery.isNotEmpty ? _searchQuery : null,
       );
 
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _drivers = response.drivers;
-          _filteredDrivers = _applyFilters(_drivers);
-        });
-      }
+      if (!mounted) return;
 
-      if (refresh) {
-        _refreshController.refreshCompleted();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-      if (refresh) {
-        _refreshController.refreshFailed();
-      }
-      _showErrorSnackbar('Erreur de chargement des livreurs: $e');
-    }
-  }
-
-  Future<void> _loadStats() async {
-    if (!mounted) return;
-
-    try {
       setState(() {
-        _isLoadingStats = true;
+        _drivers = response.drivers;
+        _updateFilteredDriversAndCounts();
+        _isLoading = false;
       });
 
-      final driverService = context.read<DriverService>();
-      final result = await driverService.getStatsSummary();
-
-      if (result['success'] == true && mounted) {
-        setState(() {
-          _isLoadingStats = false;
-          _stats = result['stats'] ?? {};
-        });
-      } else if (mounted) {
-        setState(() {
-          _isLoadingStats = false;
-        });
-      }
+      if (refresh) _refreshController.refreshCompleted();
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingStats = false;
-        });
-      }
-      if (e.toString().contains('Erreur de connexion')) {
-        _showErrorSnackbar('Erreur de connexion au serveur');
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (refresh) _refreshController.refreshFailed();
+
+      // Vérifier si c'est une erreur d'authentification
+      if (e.toString().contains('Non authentifié') ||
+          e.toString().contains('Token') ||
+          e.toString().contains('401') ||
+          e.toString().contains('403')) {
+        _showAuthErrorDialog();
+      } else {
+        // Afficher l'erreur normale
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: ${e.toString().split('\n').first}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
     }
   }
 
-  Future<void> _loadAvailableZones() async {
-    try {
-      final driverService = context.read<DriverService>();
-      await driverService.getAvailableZones();
-    } catch (e) {
-      // Silencieux en cas d'erreur
+  void _showAuthErrorDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Session expirée'),
+        content: const Text(
+          'Votre session a expiré. Veuillez vous reconnecter pour continuer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Rediriger vers l'écran de connexion
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/login',
+                (route) => false,
+              );
+            },
+            child: const Text('Se reconnecter'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _updateFilteredDriversAndCounts() {
+    // Calcul des compteurs
+    _statusCounts = _calculateStatusCounts(_drivers);
+
+    // Filtrage des drivers
+    _filteredDrivers = _applyFilters(_drivers);
+  }
+
+  Map<String, int> _calculateStatusCounts(List<Driver> drivers) {
+    final counts = <String, int>{'all': 0};
+
+    for (final driver in drivers) {
+      if (driver.isDeleted) continue;
+
+      counts['all'] = (counts['all'] ?? 0) + 1;
+
+      final status = driver.statut;
+      counts[status] = (counts[status] ?? 0) + 1;
     }
+
+    return counts;
   }
 
   List<Driver> _applyFilters(List<Driver> drivers) {
-    List<Driver> filtered = drivers.where((driver) {
-      // EXCLURE LES LIVREURS SUPPRIMÉS
-      if (driver.is_deleted == true || driver.deleted_at != null) {
-        return false;
-      }
+    final filteredList = drivers.where((driver) {
+      // Exclure les drivers supprimés
+      if (driver.isDeleted) return false;
 
       // Filtre par statut
       if (_selectedStatus != null && driver.statut != _selectedStatus) {
@@ -157,563 +168,327 @@ class _DriverListScreenState extends State<DriverListScreen> {
       return true;
     }).toList();
 
-    // TRIER PAR DATE DE CRÉATION (plus récent en premier)
-    filtered.sort((a, b) => b.created_at.compareTo(a.created_at));
+    // Tri par date de création décroissante
+    filteredList.sort((a, b) => b.created_at.compareTo(a.created_at));
 
-    return filtered;
+    return filteredList;
   }
 
-  void _onRefresh() async {
-    await Future.wait([_loadDrivers(refresh: true), _loadStats()]);
-  }
+  // ======================= STATUS SECTION =======================
 
-  void _onSearchChanged(String query) {
-    setState(() {
-      _searchQuery = query;
-      _filteredDrivers = _applyFilters(_drivers);
-    });
-  }
+  Widget _buildStatusSection() {
+    const statusConfigs = [
+      {'key': null, 'label': 'Tous'},
+      {'key': 'actif', 'label': 'Actifs'},
+      {'key': 'en_attente', 'label': 'En attente'},
+      {'key': 'suspendu', 'label': 'Suspendus'},
+      {'key': 'rejeté', 'label': 'Rejetés'},
+    ];
 
-  void _showErrorSnackbar(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  void _showSuccessSnackbar(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  Future<void> _deleteDriver(Driver driver) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirmer la suppression'),
-        content: Text(
-          'Voulez-vous vraiment supprimer le livreur ${driver.fullName} ?\n\nCette action est irréversible.',
-          style: const TextStyle(fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text(
-              'Supprimer',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      if (!mounted) return;
-
-      final driverService = context.read<DriverService>();
-      final result = await driverService.deleteDriver(driver.id);
-
-      if (result['success'] == true && mounted) {
-        _showSuccessSnackbar('Livreur supprimé avec succès');
-
-        setState(() {
-          _drivers.removeWhere((d) => d.id == driver.id);
-          _filteredDrivers = _applyFilters(_drivers);
-        });
-
-        await _loadStats();
-
-        Future.delayed(Duration.zero, () async {
-          await _loadDrivers();
-        });
-      } else if (mounted) {
-        _showErrorSnackbar(result['error'] ?? 'Erreur lors de la suppression');
-      }
-    } catch (e) {
-      if (mounted) {
-        _showErrorSnackbar('Erreur: ${e.toString()}');
-      }
-    }
-  }
-
-  Widget _buildStatsCards() {
-    if (_isLoadingStats) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final stats = _stats ?? {};
-    final byStatut = stats['by_statut'] ?? {};
-    final byDisponibilite = stats['by_disponibilite'] ?? {};
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            // Cartes de statistiques horizontales
-            _buildStatCard(
-              title: 'Total',
-              value: '${stats['total'] ?? _drivers.length}',
-              icon: Icons.people,
-              color: Colors.blue,
-            ),
-            const SizedBox(width: 8),
-            _buildStatCard(
-              title: 'Actifs',
-              value:
-                  '${stats['active'] ?? _drivers.where((d) => d.statut == 'actif').length}',
-              icon: Icons.check_circle,
-              color: Colors.green,
-            ),
-            const SizedBox(width: 8),
-            _buildStatCard(
-              title: 'Disponibles',
-              value:
-                  '${stats['available'] ?? _drivers.where((d) => d.disponibilite == 'disponible').length}',
-              icon: Icons.directions_car,
-              color: Colors.teal,
-            ),
-            const SizedBox(width: 8),
-            _buildStatCard(
-              title: 'Indisponibles',
-              value:
-                  '${byDisponibilite['indisponible'] ?? _drivers.where((d) => d.disponibilite == 'indisponible').length}',
-              icon: Icons.block,
-              color: Colors.grey,
-            ),
-            const SizedBox(width: 8),
-            _buildStatCard(
-              title: 'En attente',
-              value:
-                  '${byStatut['en_attente'] ?? _drivers.where((d) => d.statut == 'en_attente').length}',
-              icon: Icons.access_time,
-              color: Colors.orange,
-            ),
-            const SizedBox(width: 8),
-            _buildStatCard(
-              title: 'Suspendus',
-              value:
-                  '${byStatut['suspendu'] ?? _drivers.where((d) => d.statut == 'suspendu').length}',
-              icon: Icons.pause_circle,
-              color: Colors.red,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
     return SizedBox(
-      width: 120, // Largeur fixe pour les cartes
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Icon(icon, size: 16, color: color),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 20, // Taille réduite pour mieux s'adapter
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showStatusFilter() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-              ),
-              child: const Text(
-                'Filtrer par statut',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            ListTile(
-              title: const Text('Tous les statuts'),
-              leading: Radio<String?>(
-                value: null,
-                groupValue: _selectedStatus,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedStatus = value;
-                    _filteredDrivers = _applyFilters(_drivers);
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-            ),
-            ...['actif', 'en_attente', 'suspendu', 'rejeté'].map((status) {
-              return ListTile(
-                title: Text(_getStatusLabel(status)),
-                leading: Radio<String?>(
-                  value: status,
-                  groupValue: _selectedStatus,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedStatus = value;
-                      _filteredDrivers = _applyFilters(_drivers);
-                    });
-                    Navigator.pop(context);
-                  },
-                ),
-              );
-            }),
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey.shade200,
-                    foregroundColor: Colors.black,
-                  ),
-                  child: const Text('Fermer'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterChip() {
-    if (_selectedStatus == null && _searchQuery.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          if (_selectedStatus != null)
-            InputChip(
-              label: Text('Statut: ${_getStatusLabel(_selectedStatus!)}'),
-              deleteIcon: const Icon(Icons.close, size: 14),
-              onDeleted: () {
-                setState(() {
-                  _selectedStatus = null;
-                  _filteredDrivers = _applyFilters(_drivers);
-                });
-              },
-              backgroundColor: Colors.blue.shade100,
-              labelStyle: const TextStyle(
-                color: Colors.blue,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            ),
-          if (_searchQuery.isNotEmpty)
-            InputChip(
-              label: Text('Recherche: $_searchQuery'),
-              deleteIcon: const Icon(Icons.close, size: 14),
-              onDeleted: () {
-                _searchController.clear();
-                setState(() {
-                  _searchQuery = '';
-                  _filteredDrivers = _applyFilters(_drivers);
-                });
-              },
-              backgroundColor: Colors.green.shade100,
-              labelStyle: const TextStyle(
-                color: Colors.green,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            ),
-          if (_selectedStatus != null || _searchQuery.isNotEmpty)
-            ActionChip(
-              label: const Text('Tout effacer'),
-              onPressed: () {
-                _searchController.clear();
-                setState(() {
-                  _selectedStatus = null;
-                  _searchQuery = '';
-                  _filteredDrivers = _applyFilters(_drivers);
-                });
-              },
-              backgroundColor: Colors.red.shade100,
-              labelStyle: const TextStyle(
-                color: Colors.red,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              avatar: const Icon(Icons.clear_all, size: 14, color: Colors.red),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDriversList() {
-    if (_isLoading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    if (_filteredDrivers.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.person_off, size: 80, color: Colors.grey.shade300),
-              const SizedBox(height: 16),
-              Text(
-                _searchQuery.isNotEmpty || _selectedStatus != null
-                    ? 'Aucun livreur ne correspond aux filtres'
-                    : 'Aucun livreur trouvé',
-                style: const TextStyle(fontSize: 16, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-              if (_searchQuery.isEmpty && _selectedStatus == null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: ElevatedButton.icon(
-                    onPressed: _navigateToCreateDriver,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Ajouter un livreur'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return SmartRefresher(
-      controller: _refreshController,
-      enablePullDown: true,
-      onRefresh: _onRefresh,
-      header: const ClassicHeader(),
+      height: 48,
       child: ListView.separated(
-        padding: const EdgeInsets.all(12),
-        itemCount: _filteredDrivers.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          final driver = _filteredDrivers[index];
-          return DriverCard(
-            driver: driver,
-            onTap: () => _navigateToEditDriver(driver),
-            onDelete: () => _deleteDriver(driver),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        scrollDirection: Axis.horizontal,
+        itemCount: statusConfigs.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, index) {
+          final config = statusConfigs[index];
+          final isSelected = _selectedStatus == config['key'];
+
+          // Obtenir le compteur
+          final count = _getStatusCount(config['key']);
+
+          return ChoiceChip(
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(config['label'] as String),
+                if (count > 0) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Colors.white.withOpacity(0.3)
+                          : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      count.toString(),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            selected: isSelected,
+            onSelected: (_) {
+              setState(() {
+                _selectedStatus = isSelected ? null : config['key'];
+                _filteredDrivers = _applyFilters(_drivers);
+              });
+            },
+            selectedColor: Theme.of(context).primaryColor,
+            backgroundColor: Colors.grey.shade200,
+            labelStyle: TextStyle(
+              color: isSelected ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.w500,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
           );
         },
       ),
     );
   }
 
+  int _getStatusCount(String? statusKey) {
+    if (statusKey == null) return _statusCounts['all'] ?? 0;
+    return _statusCounts[statusKey] ?? 0;
+  }
+
+  // ======================= LIST =======================
+
+  Widget _buildDriversList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_drivers.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_off, size: 72, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text(
+              'Aucun livreur',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Commencez par ajouter votre premier livreur',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_filteredDrivers.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 72, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text(
+              'Aucun résultat',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 16),
+            ),
+            if (_searchQuery.isNotEmpty || _selectedStatus != null) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searchQuery = '';
+                    _selectedStatus = null;
+                    _filteredDrivers = _applyFilters(_drivers);
+                  });
+                },
+                child: const Text('Réinitialiser les filtres'),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return SmartRefresher(
+      controller: _refreshController,
+      onRefresh: () => _loadDrivers(refresh: true),
+      enablePullDown: true,
+      header: const ClassicHeader(),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: _filteredDrivers.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (_, index) {
+          final driver = _filteredDrivers[index];
+          return DriverCard(
+            driver: driver,
+            onEdit: () => _navigateToEditDriver(driver), // Utiliser onEdit
+            onDelete: () => _deleteDriver(driver), // Utiliser onDelete
+          );
+        },
+      ),
+    );
+  }
+
+  // ======================= DELETE =======================
+
+  Future<void> _deleteDriver(Driver driver) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmer la suppression'),
+        content: Text('Voulez-vous vraiment supprimer "${driver.fullName}" ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        final service = context.read<DriverService>();
+        await service.deleteDriver(driver.id);
+        await _loadDrivers();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Livreur supprimé avec succès'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        // Vérifier si c'est une erreur d'authentification
+        if (e.toString().contains('Non authentifié') ||
+            e.toString().contains('Token') ||
+            e.toString().contains('401') ||
+            e.toString().contains('403')) {
+          _showAuthErrorDialog();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Erreur: ${e.toString().split('\n').first}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  // ======================= NAV =======================
+
   Future<void> _navigateToCreateDriver() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const CreateDriverScreen()),
+      MaterialPageRoute(builder: (_) => const CreateDriverScreen()),
     );
-
-    if (result != null && result == true && mounted) {
-      _onRefresh();
-    }
+    if (result == true && mounted) await _loadDrivers();
   }
 
   Future<void> _navigateToEditDriver(Driver driver) async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => EditDriverScreen(driver: driver)),
+      MaterialPageRoute(builder: (_) => EditDriverScreen(driver: driver)),
     );
-
-    if (result != null && result == true && mounted) {
-      _onRefresh();
-    }
+    if (result == true && mounted) await _loadDrivers();
   }
 
-  String _getStatusLabel(String status) {
-    switch (status) {
-      case 'actif':
-        return 'Actif';
-      case 'en_attente':
-        return 'En attente';
-      case 'suspendu':
-        return 'Suspendu';
-      case 'rejeté':
-        return 'Rejeté';
-      default:
-        return status;
-    }
-  }
+  // ======================= BUILD =======================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gestion des Livreurs'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showStatusFilter,
-            tooltip: 'Filtrer par statut',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _onRefresh,
-            tooltip: 'Rafraîchir',
-          ),
-        ],
+        title: const Text('Livreurs'),
+        // Badge et icône d'actualisation SUPPRIMÉS comme demandé
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _navigateToCreateDriver,
+        child: const Icon(Icons.add),
       ),
       body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Cartes de statistiques horizontales
-            SizedBox(
-              height: 100, // Hauteur fixe pour les cartes de stats
-              child: _buildStatsCards(),
-            ),
-
             // Barre de recherche
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              padding: const EdgeInsets.all(12),
               child: TextField(
                 controller: _searchController,
+                onChanged: (value) {
+                  _searchDebounce?.cancel();
+                  _searchDebounce = Timer(
+                    const Duration(milliseconds: 500),
+                    () {
+                      if (mounted) {
+                        setState(() {
+                          _searchQuery = value;
+                          _filteredDrivers = _applyFilters(_drivers);
+                        });
+                      }
+                    },
+                  );
+                },
                 decoration: InputDecoration(
                   hintText: 'Rechercher un livreur...',
                   prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchController.clear();
-                            _onSearchChanged('');
+                            setState(() {
+                              _searchQuery = '';
+                              _filteredDrivers = _applyFilters(_drivers);
+                            });
                           },
                         )
                       : null,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
                 ),
-                onChanged: _onSearchChanged,
               ),
             ),
 
-            // Filtres actifs
-            _buildFilterChip(),
+            // Section statuts
+            if (_drivers.isNotEmpty) _buildStatusSection(),
 
-            // En-tête avec compte et bouton d'ajout
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Livreurs (${_filteredDrivers.length})',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+            // Indicateur de résultats
+            if (!_isLoading && _filteredDrivers.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      '${_filteredDrivers.length} résultat${_filteredDrivers.length > 1 ? 's' : ''}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
                     ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _navigateToCreateDriver,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Ajouter'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+
+            const SizedBox(height: 4),
 
             // Liste des livreurs
             Expanded(child: _buildDriversList()),

@@ -3,30 +3,40 @@ import 'package:flutter/material.dart';
 import 'package:commerce/models/facebook_models.dart';
 
 class PostsFeedSection extends StatelessWidget {
-  const PostsFeedSection({super.key});
+  final List<FacebookPost> posts;
+  final VoidCallback? onSyncPressed;
+  final Function(String postId)? onViewComments;
+
+  const PostsFeedSection({
+    super.key,
+    required this.posts,
+    this.onSyncPressed,
+    this.onViewComments,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // TODO: Replace with actual data from provider
-    final List<FacebookPost> posts = [];
-
     if (posts.isEmpty) {
-      return const _NoPosts();
+      return _NoPosts(onSyncPressed: onSyncPressed);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _PostsHeader(posts: posts),
+        _PostsHeader(posts: posts, onSyncPressed: onSyncPressed),
         const SizedBox(height: 16),
-        ...posts.map((post) => _PostCard(post: post)),
+        ...posts.map(
+          (post) => _PostCard(post: post, onViewComments: onViewComments),
+        ),
       ],
     );
   }
 }
 
 class _NoPosts extends StatelessWidget {
-  const _NoPosts();
+  final VoidCallback? onSyncPressed;
+
+  const _NoPosts({this.onSyncPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -52,9 +62,7 @@ class _NoPosts extends StatelessWidget {
             OutlinedButton.icon(
               icon: const Icon(Icons.refresh),
               label: const Text('Synchroniser les publications'),
-              onPressed: () {
-                // TODO: Sync posts
-              },
+              onPressed: onSyncPressed,
             ),
           ],
         ),
@@ -65,8 +73,9 @@ class _NoPosts extends StatelessWidget {
 
 class _PostsHeader extends StatelessWidget {
   final List<FacebookPost> posts;
+  final VoidCallback? onSyncPressed;
 
-  const _PostsHeader({required this.posts});
+  const _PostsHeader({required this.posts, this.onSyncPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -96,9 +105,7 @@ class _PostsHeader extends StatelessWidget {
                     OutlinedButton.icon(
                       icon: const Icon(Icons.refresh, size: 16),
                       label: const Text('Synchroniser'),
-                      onPressed: () {
-                        // TODO: Sync posts
-                      },
+                      onPressed: onSyncPressed,
                     ),
                     const SizedBox(width: 8),
                     IconButton(
@@ -246,8 +253,9 @@ class _HeaderStat extends StatelessWidget {
 
 class _PostCard extends StatelessWidget {
   final FacebookPost post;
+  final Function(String postId)? onViewComments;
 
-  const _PostCard({required this.post});
+  const _PostCard({required this.post, this.onViewComments});
 
   @override
   Widget build(BuildContext context) {
@@ -262,6 +270,13 @@ class _PostCard extends StatelessWidget {
               height: 200,
               width: double.infinity,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(
+                height: 200,
+                color: Colors.grey[200],
+                child: const Center(
+                  child: Icon(Icons.image, size: 64, color: Colors.grey),
+                ),
+              ),
             ),
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -312,7 +327,7 @@ class _PostCard extends StatelessWidget {
                 const SizedBox(height: 16),
                 _PostStats(post: post),
                 const SizedBox(height: 16),
-                _PostActions(post: post),
+                _PostActions(post: post, onViewComments: onViewComments),
               ],
             ),
           ),
@@ -408,8 +423,9 @@ class _StatItem extends StatelessWidget {
 
 class _PostActions extends StatelessWidget {
   final FacebookPost post;
+  final Function(String postId)? onViewComments;
 
-  const _PostActions({required this.post});
+  const _PostActions({required this.post, this.onViewComments});
 
   @override
   Widget build(BuildContext context) {
@@ -420,7 +436,7 @@ class _PostActions extends StatelessWidget {
             icon: const Icon(Icons.visibility),
             label: const Text('Voir sur Facebook'),
             onPressed: () {
-              _openFacebookPost(context, post.postId);
+              _openFacebookPost(context, post.facebookPostId); // ⭐ CORRIGÉ
             },
           ),
         ),
@@ -430,7 +446,7 @@ class _PostActions extends StatelessWidget {
             icon: const Icon(Icons.chat),
             label: const Text('Gérer commentaires'),
             onPressed: () {
-              _manageComments(context, post.postId);
+              _manageComments(context, post.facebookPostId); // ⭐ CORRIGÉ
             },
           ),
         ),
@@ -449,12 +465,15 @@ class _PostActions extends StatelessWidget {
   }
 
   void _manageComments(BuildContext context, String postId) {
-    // TODO: Navigate to comments management for this post
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Gestion des commentaires pour $postId'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    if (onViewComments != null) {
+      onViewComments!(postId);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gestion des commentaires pour $postId'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 }

@@ -3,30 +3,56 @@ import 'package:flutter/material.dart';
 import 'package:commerce/models/facebook_models.dart';
 
 class LivesSection extends StatelessWidget {
-  const LivesSection({super.key});
+  final List<FacebookLiveVideo> lives;
+  final VoidCallback? onSyncPressed;
+  final VoidCallback? onCreateLivePressed;
+  final Function(String videoId)? onViewLiveComments;
+  final Function(String videoId)? onViewAnalytics;
+
+  const LivesSection({
+    super.key,
+    required this.lives,
+    this.onSyncPressed,
+    this.onCreateLivePressed,
+    this.onViewLiveComments,
+    this.onViewAnalytics,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // TODO: Replace with actual data from provider
-    final List<FacebookLiveVideo> lives = [];
-
     if (lives.isEmpty) {
-      return const _NoLiveVideos();
+      return _NoLiveVideos(
+        onCreateLivePressed: onCreateLivePressed,
+        onSyncPressed: onSyncPressed,
+      );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _LiveHeader(lives: lives),
+        _LiveHeader(
+          lives: lives,
+          onCreateLivePressed: onCreateLivePressed,
+          onSyncPressed: onSyncPressed,
+        ),
         const SizedBox(height: 16),
-        ...lives.map((live) => _LiveCard(live: live)),
+        ...lives.map(
+          (live) => _LiveCard(
+            live: live,
+            onViewLiveComments: onViewLiveComments,
+            onViewAnalytics: onViewAnalytics,
+          ),
+        ),
       ],
     );
   }
 }
 
 class _NoLiveVideos extends StatelessWidget {
-  const _NoLiveVideos();
+  final VoidCallback? onCreateLivePressed;
+  final VoidCallback? onSyncPressed;
+
+  const _NoLiveVideos({this.onCreateLivePressed, this.onSyncPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -64,9 +90,13 @@ class _NoLiveVideos extends StatelessWidget {
             ElevatedButton.icon(
               icon: const Icon(Icons.add),
               label: const Text('Créer un live'),
-              onPressed: () {
-                // TODO: Implement create live
-              },
+              onPressed: onCreateLivePressed,
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: const Text('Synchroniser les lives'),
+              onPressed: onSyncPressed,
             ),
           ],
         ),
@@ -77,8 +107,14 @@ class _NoLiveVideos extends StatelessWidget {
 
 class _LiveHeader extends StatelessWidget {
   final List<FacebookLiveVideo> lives;
+  final VoidCallback? onCreateLivePressed;
+  final VoidCallback? onSyncPressed;
 
-  const _LiveHeader({required this.lives});
+  const _LiveHeader({
+    required this.lives,
+    this.onCreateLivePressed,
+    this.onSyncPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +124,10 @@ class _LiveHeader extends StatelessWidget {
       0,
       (sum, live) => sum + live.totalRevenue,
     );
+    final totalComments = lives.fold<int>(
+      0,
+      (sum, live) => sum + live.totalComments,
+    );
 
     return Card(
       child: Padding(
@@ -95,9 +135,23 @@ class _LiveHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Live Commerce',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Live Commerce',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: onSyncPressed,
+                      tooltip: 'Synchroniser',
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Row(
@@ -116,6 +170,12 @@ class _LiveHeader extends StatelessWidget {
                   color: Colors.red,
                 ),
                 _HeaderStat(
+                  value: totalComments.toString(),
+                  label: 'Commentaires',
+                  icon: Icons.comment,
+                  color: Colors.orange,
+                ),
+                _HeaderStat(
                   value: '${totalRevenue.toStringAsFixed(0)}€',
                   label: 'Revenu total',
                   icon: Icons.euro,
@@ -130,17 +190,15 @@ class _LiveHeader extends StatelessWidget {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.add),
                     label: const Text('Nouveau live'),
-                    onPressed: () {
-                      // TODO: Implement new live
-                    },
+                    onPressed: onCreateLivePressed,
                   ),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.schedule),
-                  label: const Text('Planifier'),
+                  icon: const Icon(Icons.filter_list),
+                  label: const Text('Filtrer'),
                   onPressed: () {
-                    // TODO: Implement schedule live
+                    _showFilterDialog(context);
                   },
                 ),
               ],
@@ -148,6 +206,75 @@ class _LiveHeader extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showFilterDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Filtrer les lives'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CheckboxListTile(
+                  title: const Text('En direct seulement'),
+                  value: false,
+                  onChanged: (value) {},
+                ),
+                CheckboxListTile(
+                  title: const Text('Lives terminés'),
+                  value: false,
+                  onChanged: (value) {},
+                ),
+                CheckboxListTile(
+                  title: const Text('Lives planifiés'),
+                  value: false,
+                  onChanged: (value) {},
+                ),
+                const SizedBox(height: 12),
+                const Text('Date de création'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Depuis',
+                          hintText: 'JJ/MM/AAAA',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Jusqu\'à',
+                          hintText: 'JJ/MM/AAAA',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Appliquer'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -194,8 +321,14 @@ class _HeaderStat extends StatelessWidget {
 
 class _LiveCard extends StatelessWidget {
   final FacebookLiveVideo live;
+  final Function(String videoId)? onViewLiveComments;
+  final Function(String videoId)? onViewAnalytics;
 
-  const _LiveCard({required this.live});
+  const _LiveCard({
+    required this.live,
+    this.onViewLiveComments,
+    this.onViewAnalytics,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -211,14 +344,27 @@ class _LiveCard extends StatelessWidget {
                 _LiveStatusBadge(live: live),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    live.title ?? 'Live sans titre',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        live.title ?? 'Live sans titre',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (live.viewersCount > 0)
+                        Text(
+                          '${live.viewersCount} spectateurs',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 IconButton(
@@ -231,16 +377,35 @@ class _LiveCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (live.description != null && live.description!.isNotEmpty)
-              Text(
-                live.description!,
-                style: const TextStyle(color: Colors.grey),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  live.description!,
+                  style: const TextStyle(color: Colors.grey),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            const SizedBox(height: 16),
+            if (live.actualStartTime != null) ...[
+              Row(
+                children: [
+                  const Icon(Icons.schedule, size: 14, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${live.actualStartTime!.day}/${live.actualStartTime!.month}/${live.actualStartTime!.year} à ${live.actualStartTime!.hour}:${live.actualStartTime!.minute.toString().padLeft(2, '0')}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
             _LiveStats(live: live),
             const SizedBox(height: 16),
-            _LiveActions(live: live),
+            _LiveActions(
+              live: live,
+              onViewLiveComments: onViewLiveComments,
+              onViewAnalytics: onViewAnalytics,
+            ),
           ],
         ),
       ),
@@ -267,7 +432,19 @@ class _LiveCard extends StatelessWidget {
               title: const Text('Analytiques'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Implement analytics
+                if (onViewAnalytics != null) {
+                  onViewAnalytics!(live.facebookVideoId);
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.chat),
+              title: const Text('Voir les commentaires'),
+              onTap: () {
+                Navigator.pop(context);
+                if (onViewLiveComments != null) {
+                  onViewLiveComments!(live.facebookVideoId);
+                }
               },
             ),
             ListTile(
@@ -275,7 +452,16 @@ class _LiveCard extends StatelessWidget {
               title: const Text('Copier le lien'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Implement copy link
+                if (live.permalinkUrl != null &&
+                    live.permalinkUrl!.isNotEmpty) {
+                  // Copier le lien dans le presse-papier
+                  // Clipboard.setData(ClipboardData(text: live.permalinkUrl!));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Lien copié dans le presse-papier'),
+                    ),
+                  );
+                }
               },
             ),
             if (live.isLive)
@@ -286,7 +472,7 @@ class _LiveCard extends StatelessWidget {
                 iconColor: Colors.red,
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Implement stop live
+                  _confirmStopLive(context, live);
                 },
               ),
             const Divider(),
@@ -299,6 +485,32 @@ class _LiveCard extends StatelessWidget {
                 Navigator.pop(context);
                 _confirmDeleteLive(context, live);
               },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _confirmStopLive(BuildContext context, FacebookLiveVideo live) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Terminer le live ?'),
+          content: const Text('Voulez-vous vraiment terminer ce live ?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () {
+                Navigator.pop(context);
+                // TODO: Implement stop live
+              },
+              child: const Text('Terminer'),
             ),
           ],
         );
@@ -358,6 +570,10 @@ class _LiveStatusBadge extends StatelessWidget {
       backgroundColor = Colors.blue;
       textColor = Colors.white;
       text = 'PLANIFIÉ';
+    } else if (live.isPublished) {
+      backgroundColor = Colors.green;
+      textColor = Colors.white;
+      text = 'PUBLIÉ';
     } else {
       backgroundColor = Colors.orange;
       textColor = Colors.white;
@@ -393,6 +609,11 @@ class _LiveStats extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
         _StatItem(
+          icon: Icons.remove_red_eye,
+          value: live.viewersCount.toString(),
+          label: 'Spectateurs',
+        ),
+        _StatItem(
           icon: Icons.comment,
           value: live.totalComments.toString(),
           label: 'Commentaires',
@@ -406,11 +627,6 @@ class _LiveStats extends StatelessWidget {
           icon: Icons.euro,
           value: '${live.totalRevenue.toStringAsFixed(2)}€',
           label: 'Revenu',
-        ),
-        _StatItem(
-          icon: Icons.timer,
-          value: '${live.nlpProcessedComments}',
-          label: 'Traités',
         ),
       ],
     );
@@ -436,7 +652,7 @@ class _StatItem extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
@@ -446,8 +662,14 @@ class _StatItem extends StatelessWidget {
 
 class _LiveActions extends StatelessWidget {
   final FacebookLiveVideo live;
+  final Function(String videoId)? onViewLiveComments;
+  final Function(String videoId)? onViewAnalytics;
 
-  const _LiveActions({required this.live});
+  const _LiveActions({
+    required this.live,
+    this.onViewLiveComments,
+    this.onViewAnalytics,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -459,17 +681,22 @@ class _LiveActions extends StatelessWidget {
               icon: const Icon(Icons.chat),
               label: const Text('Voir les commentaires'),
               onPressed: () {
-                // TODO: Navigate to comments
+                if (onViewLiveComments != null) {
+                  onViewLiveComments!(live.facebookVideoId);
+                }
               },
             ),
           ),
           const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.refresh),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Regarder'),
             onPressed: () {
-              // TODO: Refresh live data
+              if (live.streamUrl != null && live.streamUrl!.isNotEmpty) {
+                // Ouvrir le stream
+                // launchUrl(Uri.parse(live.streamUrl!));
+              }
             },
-            tooltip: 'Rafraîchir',
           ),
         ],
       );
@@ -479,20 +706,24 @@ class _LiveActions extends StatelessWidget {
       children: [
         Expanded(
           child: OutlinedButton.icon(
-            icon: const Icon(Icons.analytics),
-            label: const Text('Analytiques'),
+            icon: const Icon(Icons.chat),
+            label: const Text('Commentaires'),
             onPressed: () {
-              // TODO: Show analytics
+              if (onViewLiveComments != null) {
+                onViewLiveComments!(live.facebookVideoId);
+              }
             },
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: OutlinedButton.icon(
-            icon: const Icon(Icons.content_copy),
-            label: const Text('Copier'),
+            icon: const Icon(Icons.analytics),
+            label: const Text('Analytiques'),
             onPressed: () {
-              // TODO: Copy live data
+              if (onViewAnalytics != null) {
+                onViewAnalytics!(live.facebookVideoId);
+              }
             },
           ),
         ),

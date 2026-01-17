@@ -136,6 +136,7 @@ class _FacebookAuthSectionState extends State<FacebookAuthSection> {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
 
           // ⬅️ CORRECTION: Afficher boîte de dialogue avec vérification automatique
+          // ignore: use_build_context_synchronously
           _showConnectionDialog(context, () {
             // Quand l'utilisateur clique sur "J'ai autorisé"
             _checkFacebookAuthorization(provider);

@@ -1,7 +1,8 @@
-// lib/services/product_service.dart - VERSION CORRIGÉE
+// lib/services/product_service.dart - VERSION COMPLÈTE CORRIGÉE
 // ignore_for_file: avoid_print
 
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -9,53 +10,57 @@ import '../models/product.dart';
 import '../utils/constants.dart';
 
 // ============================================
-// EXCEPTIONS SIMPLIFIÉES
+// EXCEPTIONS
 // ============================================
 
-class ProductException implements Exception {
+class ProductServiceException implements Exception {
   final String message;
   final int? statusCode;
 
-  ProductException(this.message, {this.statusCode});
+  ProductServiceException(this.message, {this.statusCode});
 
   @override
-  String toString() => 'ProductException: $message';
+  String toString() => 'ProductServiceException: $message';
 }
 
 // ============================================
-// SERVICE PRINCIPAL
+// SERVICE PRINCIPAL - VERSION CORRIGÉE
 // ============================================
 
 class ProductService extends ChangeNotifier {
   // Dépendances
   final String Function() getAuthToken;
   final String Function() getSellerId;
-  final String Function() getUserId; // Ajouté pour résolution d'identifiant
+  final String Function() getUserId;
 
   // État
   List<Product> _products = [];
   bool _isLoading = false;
   String? _error;
   bool _hasSessionExpired = false;
+  Map<String, dynamic>? _stats;
 
   ProductService({
     required this.getAuthToken,
     required this.getSellerId,
-    required this.getUserId, // Nouveau paramètre
+    required this.getUserId,
   });
 
   // ============================================
   // GETTERS
   // ============================================
 
-  List<Product> get products => _products;
+  List<Product> get products => List.unmodifiable(_products);
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasError => _error != null;
   bool get hasSessionExpired => _hasSessionExpired;
+  Map<String, dynamic>? get stats => _stats;
+  int get productCount => _products.length;
+  int get activeProductCount => _products.where((p) => p.isActive).length;
 
   // ============================================
-  // MÉTHODES UTILITAIRES
+  // MÉTHODES UTILITAIRES CORRIGÉES
   // ============================================
 
   void clearError() {
@@ -68,13 +73,19 @@ class ProductService extends ChangeNotifier {
     _isLoading = false;
     _error = null;
     _hasSessionExpired = false;
+    _stats = null;
     notifyListeners();
   }
 
+  /// HEADERS ESSENTIELS POUR NGROK
   Map<String, String> _getHeaders() {
     final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      // HEADERS CRITIQUES POUR NGROK
+      'ngrok-skip-browser-warning': 'true',
+      'Access-Control-Allow-Origin': '*',
+      'Origin': 'http://localhost',
     };
 
     final token = getAuthToken();
@@ -85,90 +96,121 @@ class ProductService extends ChangeNotifier {
     return headers;
   }
 
+  // ignore: unused_element
   String _buildUrl(String endpoint) {
+    // CORRECTION: Utilise Constants.baseUrl directement
     return '${Constants.apiBaseUrl}$endpoint';
   }
 
+  /// Détecte si la réponse est la page d'avertissement ngrok
+  bool _isHtmlResponse(String body) {
+    final trimmed = body.trim();
+    return trimmed.startsWith('<!DOCTYPE') ||
+        trimmed.startsWith('<html') ||
+        trimmed.contains('ngrok.com') ||
+        trimmed.contains('You are about to visit');
+  }
+
+  /// Log et gestion des erreurs HTTP
   void _handleError(http.Response response) {
     final statusCode = response.statusCode;
+    final body = response.body;
 
     print('❌ Erreur HTTP: $statusCode');
-    print('Response: ${response.body}');
 
-    switch (statusCode) {
-      case 401:
+    // Vérifie si c'est la page ngrok
+    if (_isHtmlResponse(body)) {
+      print('❌ NGROK BLOQUE CETTE REQUÊTE !');
+      print('📄 Extrait HTML: ${body.substring(0, min(200, body.length))}');
+      throw ProductServiceException(
+        'Serveur temporairement indisponible. Réessayez dans 1 minute.',
+        statusCode: statusCode,
+      );
+    }
+
+    print(
+      '📄 Body: ${body.length > 300 ? "${body.substring(0, 300)}..." : body}',
+    );
+
+    try {
+      final errorData = json.decode(body) as Map<String, dynamic>;
+      final errorMessage =
+          errorData['detail'] ??
+          errorData['message'] ??
+          errorData['error'] ??
+          'Erreur serveur ($statusCode)';
+
+      if (statusCode == 401 || statusCode == 403) {
         _hasSessionExpired = true;
         notifyListeners();
-        throw ProductException('Session expirée. Veuillez vous reconnecter.');
-
-      case 403:
-        throw ProductException(
-          'Vous n\'êtes pas autorisé à effectuer cette action.',
+        throw ProductServiceException(
+          'Session expirée. Veuillez vous reconnecter.',
         );
+      }
 
-      case 404:
-        throw ProductException('Ressource non trouvée.');
-
-      case 405:
-        throw ProductException('Méthode HTTP non autorisée.');
-
-      case 422:
-        try {
-          final errorData = json.decode(response.body);
-          if (errorData is Map && errorData['detail'] != null) {
-            throw ProductException(errorData['detail'].toString());
-          }
-          throw ProductException('Données invalides.');
-        } catch (e) {
-          throw ProductException('Erreur de validation.');
-        }
-
-      case 500:
-        try {
-          final errorData = json.decode(response.body);
-          if (errorData is Map && errorData['detail'] != null) {
-            throw ProductException(errorData['detail'].toString());
-          }
-          throw ProductException('Erreur serveur interne.');
-        } catch (e) {
-          throw ProductException('Erreur serveur (500).');
-        }
-
-      default:
-        throw ProductException('Erreur serveur ($statusCode).');
+      throw ProductServiceException(
+        errorMessage.toString(),
+        statusCode: statusCode,
+      );
+    } catch (e) {
+      switch (statusCode) {
+        case 401:
+          _hasSessionExpired = true;
+          notifyListeners();
+          throw ProductServiceException(
+            'Session expirée. Veuillez vous reconnecter.',
+          );
+        case 403:
+          throw ProductServiceException('Accès refusé.');
+        case 404:
+          throw ProductServiceException('Ressource non trouvée.');
+        case 422:
+          throw ProductServiceException('Données invalides.');
+        case 500:
+          throw ProductServiceException('Erreur serveur interne.');
+        default:
+          throw ProductServiceException('Erreur serveur ($statusCode).');
+      }
     }
   }
 
+  /// Parse un produit depuis JSON
   Product _parseProduct(Map<String, dynamic> jsonData) {
-    return Product.fromJson(jsonData);
+    try {
+      return Product.fromJson(jsonData);
+    } catch (e) {
+      print('❌ Erreur parsing produit: $e');
+      print('❌ Données: $jsonData');
+      throw ProductServiceException('Format de données invalide');
+    }
   }
 
+  /// Parse une liste de produits
   List<Product> _parseProducts(List<dynamic> jsonList) {
-    print('🔄 Parsing ${jsonList.length} produits');
+    final products = <Product>[];
 
-    final result = jsonList
-        .map((item) {
-          try {
-            return Product.fromJson(item as Map<String, dynamic>);
-          } catch (e) {
-            print('❌ Erreur parsing produit: $e');
-            print('❌ Données problématiques: $item');
-            return null;
-          }
-        })
-        .where((product) => product != null)
-        .cast<Product>()
-        .toList();
+    for (var item in jsonList) {
+      try {
+        final product = Product.fromJson(item as Map<String, dynamic>);
+        products.add(product);
+      } catch (e) {
+        print('⚠️ Produit ignoré (parsing error): $e');
+        print('⚠️ Données: $item');
+        continue;
+      }
+    }
 
-    print('✅ ${result.length} produits parsés avec succès');
-    return result;
+    print(
+      '✅ ${products.length}/${jsonList.length} produits parsés avec succès',
+    );
+    return products;
   }
 
   // ============================================
-  // ENDPOINTS CORRIGÉS (selon ton backend FastAPI)
+  // MÉTHODES PRINCIPALES - VERSION CORRIGÉE
   // ============================================
 
-  /// 1) Mes produits (vendeur connecté)
+  /// 1. Charger mes produits (avec gestion ngrok intelligente)
   Future<void> loadMyProducts({
     bool? isActive,
     int page = 1,
@@ -181,196 +223,253 @@ class ProductService extends ChangeNotifier {
 
       final token = getAuthToken();
       if (token.isEmpty) {
-        throw ProductException('Non authentifié.');
+        throw ProductServiceException('Non authentifié.');
       }
 
-      // Construire l'URL avec query params
-      final params = {
-        if (isActive != null) 'is_active': isActive.toString(),
-        'page': page.toString(),
-        'size': size.toString(),
-      };
+      final sellerId = getSellerId();
+      print('🔄 Chargement produits pour seller: $sellerId');
 
-      final queryString = Uri(queryParameters: params).query;
-      final url = _buildUrl('/products/my-products?$queryString');
-      print('🌐 URL: $url');
+      // ESSAI 1: Endpoint /products/my-products
+      try {
+        final params = {
+          if (isActive != null) 'is_active': isActive.toString(),
+          'page': page.toString(),
+          'size': size.toString(),
+        };
 
-      final response = await http
-          .get(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 30));
+        final queryString = Uri(queryParameters: params).query;
+        final url = '${Constants.apiBaseUrl}/products/my-products?$queryString';
 
-      print('📊 Status: ${response.statusCode}');
+        print('🌐 ESSAI 1 - URL: $url');
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as List;
-        _products = _parseProducts(data);
-        print('✅ ${_products.length} produits chargés (mes produits)');
+        final response = await http
+            .get(Uri.parse(url), headers: _getHeaders())
+            .timeout(const Duration(seconds: 15));
+
+        print('📊 Status: ${response.statusCode}');
+
+        // Vérifie si ngrok bloque
+        if (_isHtmlResponse(response.body)) {
+          print('❌ Ngrok bloque /my-products, essaie méthode alternative');
+          throw ProductServiceException('ngrok_block');
+        }
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+
+          // Gestion des différents formats de réponse
+          List<dynamic> items = [];
+          if (data is List) {
+            items = data;
+          } else if (data is Map && data['items'] is List) {
+            items = data['items'];
+          } else if (data is Map && data['products'] is List) {
+            items = data['products'];
+          } else {
+            throw ProductServiceException('Format de réponse inattendu');
+          }
+
+          _products = _parseProducts(items);
+          print('✅ ${_products.length} produits chargés via /my-products');
+          return;
+        } else {
+          _handleError(response);
+        }
+      } catch (e) {
+        if (e.toString().contains('ngrok_block') || sellerId.isEmpty) {
+          rethrow;
+        }
+        print('⚠️ Méthode 1 échouée: $e');
+      }
+
+      // ESSAI 2: Fallback vers /products/filter
+      if (sellerId.isNotEmpty) {
+        print('🔄 ESSAI 2: Fallback avec /products/filter');
+
+        final products = await _getProductsByFilter(
+          sellerId: sellerId,
+          isActive: isActive,
+          page: page,
+          size: size,
+        );
+
+        _products = products;
+        print('✅ ${_products.length} produits chargés via fallback /filter');
       } else {
-        _handleError(response);
+        throw ProductServiceException('Seller ID non disponible');
       }
     } catch (e) {
-      print('💥 Exception dans loadMyProducts: $e');
+      print('💥 Erreur loadMyProducts: $e');
       _error = e.toString();
-      rethrow;
+
+      // Si ngrok bloque, essaie quand même avec filter
+      if (e.toString().contains('ngrok')) {
+        final sellerId = getSellerId();
+        if (sellerId.isNotEmpty) {
+          try {
+            final products = await _getProductsByFilter(sellerId: sellerId);
+            _products = products;
+            print('✅ Récupération partielle: ${_products.length} produits');
+          } catch (_) {
+            _products = [];
+          }
+        }
+      }
+
+      if (!e.toString().contains('ngrok')) {
+        rethrow;
+      }
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  /// 2) Produits d'un vendeur spécifique (par seller_id OU user_id)
-  Future<List<Product>> loadSellerProducts({
-    required String identifier, // Accepte seller_id OU user_id
+  /// Méthode helper pour /products/filter
+  Future<List<Product>> _getProductsByFilter({
+    required String sellerId,
     bool? isActive,
     int page = 1,
-    int size = 20,
-    String sortBy = 'created_at',
-    bool sortDesc = true,
+    int size = 50,
   }) async {
     try {
-      print('🔍 Chargement produits pour identifiant: $identifier');
-
-      // Construire les query params
       final params = {
+        'seller_id': sellerId,
         if (isActive != null) 'is_active': isActive.toString(),
         'page': page.toString(),
         'size': size.toString(),
-        'sort_by': sortBy,
-        'sort_desc': sortDesc.toString(),
       };
 
       final queryString = Uri(queryParameters: params).query;
-      final url = _buildUrl('/products/seller/$identifier?$queryString');
-      print('🌐 URL: $url');
+      final url = '${Constants.apiBaseUrl}/products/filter?$queryString';
+
+      print('🌐 Filter URL: $url');
+      print('📋 Headers: ${_getHeaders()}');
 
       final response = await http
           .get(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 15));
 
-      print('📊 Status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as List;
-        return _parseProducts(data);
-      } else {
-        _handleError(response);
-        return [];
+      if (_isHtmlResponse(response.body)) {
+        print('❌ Ngrok bloque aussi /filter !');
+        throw ProductServiceException('ngrok_block');
       }
-    } catch (e) {
-      print('💥 Erreur dans loadSellerProducts: $e');
-      return [];
-    }
-  }
-
-  /// 3) Recherche texte
-  Future<List<Product>> searchProducts({
-    required String query,
-    int limit = 20,
-  }) async {
-    try {
-      print('🔎 Recherche: "$query" (limite: $limit)');
-
-      final url = _buildUrl(
-        '/products/search?q=${Uri.encodeComponent(query)}&limit=$limit',
-      );
-      print('🌐 URL: $url');
-
-      final response = await http
-          .get(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as List;
-        return _parseProducts(data);
-      } else {
-        _handleError(response);
-        return [];
-      }
-    } catch (e) {
-      print('💥 Erreur recherche: $e');
-      return [];
-    }
-  }
-
-  /// 4) Filtrage avancé
-  Future<Map<String, dynamic>> filterProducts({
-    String? sellerId,
-    String? categoryName,
-    bool? isActive,
-    double? priceMin,
-    double? priceMax,
-    String? search,
-    int page = 1,
-    int size = 20,
-    String sortBy = 'created_at',
-    bool sortDesc = true,
-  }) async {
-    try {
-      print('⚙️ Filtrage avancé');
-
-      // Construire les query params
-      final params = <String, String>{
-        'page': page.toString(),
-        'size': size.toString(),
-        'sort_by': sortBy,
-        'sort_desc': sortDesc.toString(),
-      };
-
-      if (sellerId != null) params['seller_id'] = sellerId;
-      if (categoryName != null) params['category_name'] = categoryName;
-      if (isActive != null) params['is_active'] = isActive.toString();
-      if (priceMin != null) params['price_min'] = priceMin.toString();
-      if (priceMax != null) params['price_max'] = priceMax.toString();
-      if (search != null && search.isNotEmpty) {
-        params['search'] = search;
-      }
-
-      final queryString = Uri(queryParameters: params).query;
-      final url = _buildUrl('/products/filter?$queryString');
-      print('🌐 URL: $url');
-
-      final response = await http
-          .get(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 30));
-
-      print('📊 Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
-
-        // Structure de retour du backend
-        final items = (data['items'] as List).map((item) {
-          return Product.fromJson(item as Map<String, dynamic>);
-        }).toList();
-
-        return {
-          'items': items,
-          'total': data['total'] as int,
-          'page': data['page'] as int,
-          'size': data['size'] as int,
-          'pages': data['pages'] as int,
-        };
+        final items = data['items'] as List;
+        return _parseProducts(items);
       } else {
         _handleError(response);
-        return {'items': [], 'total': 0, 'page': 1, 'pages': 1};
+        return [];
       }
     } catch (e) {
-      print('💥 Erreur filtrage: $e');
-      return {'items': [], 'total': 0, 'page': 1, 'pages': 1};
+      print('❌ Erreur _getProductsByFilter: $e');
+      rethrow;
     }
   }
 
-  /// 5) Créer un produit (CORRIGÉ - seller_id géré par le backend)
+  /// 2. Charger les statistiques du vendeur
+  Future<void> loadSellerStats() async {
+    try {
+      final sellerId = getSellerId();
+      if (sellerId.isEmpty) {
+        _stats = _getDefaultStats();
+        return;
+      }
+
+      print('📈 Chargement stats pour seller: $sellerId');
+
+      // ESSAI: Endpoint stats
+      try {
+        final url = '${Constants.apiBaseUrl}/products/seller/$sellerId/stats';
+        print('🌐 Stats URL: $url');
+        print('📋 Headers: ${_getHeaders()}');
+
+        final response = await http
+            .get(Uri.parse(url), headers: _getHeaders())
+            .timeout(const Duration(seconds: 10));
+
+        if (_isHtmlResponse(response.body)) {
+          print('❌ Ngrok bloque /stats, calcul local');
+          throw ProductServiceException('ngrok_block');
+        }
+
+        if (response.statusCode == 200) {
+          _stats = json.decode(response.body) as Map<String, dynamic>;
+          print('✅ Stats chargées: $_stats');
+          return;
+        }
+      } catch (e) {
+        if (!e.toString().contains('ngrok')) {
+          rethrow;
+        }
+        print('⚠️ Endpoint stats bloqué, calcul local');
+      }
+
+      // Fallback: Calcul local basé sur les produits chargés
+      _stats = _calculateLocalStats();
+      print('✅ Stats calculées localement: $_stats');
+    } catch (e) {
+      print('❌ Erreur loadSellerStats: $e');
+      _stats = _getDefaultStats();
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  /// Calcul des stats locales
+  Map<String, dynamic> _calculateLocalStats() {
+    final total = _products.length;
+    final active = _products.where((p) => p.isActive).length;
+    final totalValue = _products.fold(
+      0.0,
+      (sum, p) => sum + (p.price * p.stock),
+    );
+    final avgPrice = total > 0
+        ? _products.fold(0.0, (sum, p) => sum + p.price) / total
+        : 0;
+
+    return {
+      'total_products': total,
+      'active_products': active,
+      'inactive_products': total - active,
+      'total_stock': _products.fold(0, (sum, p) => sum + p.stock),
+      'total_value': totalValue,
+      'average_price': avgPrice,
+      'min_price': _products.isNotEmpty
+          ? _products.map((p) => p.price).reduce(min)
+          : 0,
+      'max_price': _products.isNotEmpty
+          ? _products.map((p) => p.price).reduce(max)
+          : 0,
+    };
+  }
+
+  /// Stats par défaut
+  Map<String, dynamic> _getDefaultStats() {
+    return {
+      'total_products': 0,
+      'active_products': 0,
+      'inactive_products': 0,
+      'total_stock': 0,
+      'total_value': 0.0,
+      'average_price': 0.0,
+      'min_price': 0.0,
+      'max_price': 0.0,
+    };
+  }
+
+  /// 3. Créer un produit
   Future<Product> createProduct(ProductCreateRequest request) async {
     try {
-      print('➕ Création produit');
       _isLoading = true;
+      _error = null;
       notifyListeners();
 
-      // NE PAS ajouter seller_id ici, le backend le récupère du token
-      final url = _buildUrl('/products/');
-      print('🌐 URL: $url');
-      print('📝 Données: ${request.toJson()}');
+      final url = '${Constants.apiBaseUrl}/products/';
+      print('➕ Création produit: $url');
+      print('📝 Données: ${json.encode(request.toJson())}');
 
       final response = await http
           .post(
@@ -382,22 +481,30 @@ class ProductService extends ChangeNotifier {
 
       print('📊 Status: ${response.statusCode}');
 
-      if (response.statusCode == 201) {
+      if (_isHtmlResponse(response.body)) {
+        throw ProductServiceException('ngrok_block');
+      }
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
         final newProduct = _parseProduct(data);
 
-        // Ajouter à la liste locale
+        // Ajouter au début de la liste
         _products.insert(0, newProduct);
-        print('✅ Produit créé: ${newProduct.id}');
 
+        // Recalculer les stats
+        await loadSellerStats();
+
+        print('✅ Produit créé: ${newProduct.id} - ${newProduct.name}');
         notifyListeners();
         return newProduct;
       } else {
         _handleError(response);
-        throw ProductException('Échec de la création');
+        throw ProductServiceException('Échec de la création');
       }
     } catch (e) {
-      print('💥 Exception création: $e');
+      print('💥 Erreur création produit: $e');
+      _error = e.toString();
       rethrow;
     } finally {
       _isLoading = false;
@@ -405,41 +512,17 @@ class ProductService extends ChangeNotifier {
     }
   }
 
-  /// 6) Récupérer un produit par ID
-  Future<Product> getProduct(String productId) async {
-    try {
-      print('🔍 Détail produit: $productId');
-
-      final url = _buildUrl('/products/$productId');
-      print('🌐 URL: $url');
-
-      final response = await http
-          .get(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as Map<String, dynamic>;
-        return _parseProduct(data);
-      } else {
-        _handleError(response);
-        throw ProductException('Produit non trouvé');
-      }
-    } catch (e) {
-      print('💥 Erreur détail: $e');
-      rethrow;
-    }
-  }
-
-  /// 7) Mettre à jour un produit (PATCH)
+  /// 4. Mettre à jour un produit
   Future<Product> updateProduct(
     String productId,
     ProductUpdateRequest request,
   ) async {
     try {
-      print('✏️ Mise à jour produit: $productId');
+      _isLoading = true;
+      notifyListeners();
 
-      final url = _buildUrl('/products/$productId');
-      print('🌐 URL: $url');
+      final url = '${Constants.apiBaseUrl}/products/$productId';
+      print('✏️ Mise à jour produit $productId: $url');
 
       final response = await http
           .patch(
@@ -448,6 +531,12 @@ class ProductService extends ChangeNotifier {
             body: json.encode(request.toJson()),
           )
           .timeout(const Duration(seconds: 30));
+
+      print('📊 Status: ${response.statusCode}');
+
+      if (_isHtmlResponse(response.body)) {
+        throw ProductServiceException('ngrok_block');
+      }
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -459,174 +548,133 @@ class ProductService extends ChangeNotifier {
           _products[index] = updatedProduct;
         }
 
+        // Recalculer les stats
+        await loadSellerStats();
+
+        print('✅ Produit mis à jour: $productId');
         notifyListeners();
         return updatedProduct;
       } else {
         _handleError(response);
-        throw ProductException('Échec de la mise à jour');
+        throw ProductServiceException('Échec de la mise à jour');
       }
     } catch (e) {
       print('💥 Erreur mise à jour: $e');
       rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
-  /// 8) Supprimer un produit
+  /// 5. Supprimer un produit
   Future<void> deleteProduct(String productId) async {
     try {
-      print('🗑️ Suppression produit: $productId');
+      _isLoading = true;
+      notifyListeners();
 
-      final url = _buildUrl('/products/$productId');
-      print('🌐 URL: $url');
+      final url = '${Constants.apiBaseUrl}/products/$productId';
+      print('🗑️ Suppression produit $productId: $url');
 
       final response = await http
           .delete(Uri.parse(url), headers: _getHeaders())
           .timeout(const Duration(seconds: 30));
 
-      if (response.statusCode == 204) {
+      print('📊 Status: ${response.statusCode}');
+
+      if (_isHtmlResponse(response.body)) {
+        throw ProductServiceException('ngrok_block');
+      }
+
+      if (response.statusCode == 204 || response.statusCode == 200) {
+        // Supprimer localement
         _products.removeWhere((p) => p.id == productId);
-        print('✅ Produit supprimé');
+
+        // Recalculer les stats
+        await loadSellerStats();
+
+        print('✅ Produit supprimé: $productId');
         notifyListeners();
       } else {
         _handleError(response);
-        throw ProductException('Échec de la suppression');
+        throw ProductServiceException('Échec de la suppression');
       }
     } catch (e) {
       print('💥 Erreur suppression: $e');
       rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
-  /// 9) Générer un code article
-  Future<Map<String, dynamic>> generateProductCode({
-    required String categoryName,
-    required String sellerId,
-  }) async {
+  /// 6. Récupérer un produit par ID
+  Future<Product> getProductById(String productId) async {
     try {
-      print('🔢 Génération code pour catégorie: $categoryName');
+      print('🔍 Détail produit: $productId');
 
-      final url = _buildUrl('/products/generate-code');
-      print('🌐 URL: $url');
-
-      final requestData = {
-        'category_name': categoryName,
-        'seller_id': sellerId,
-      };
-
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: _getHeaders(),
-            body: json.encode(requestData),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as Map<String, dynamic>;
-        print('✅ Code généré: $data');
-        return data;
-      } else {
-        _handleError(response);
-        return {};
-      }
-    } catch (e) {
-      print('💥 Erreur génération code: $e');
-      return {};
-    }
-  }
-
-  /// 10) Statistiques du vendeur
-  Future<Map<String, dynamic>> getSellerStats({
-    String? identifier, // optionnel, sinon utilise getSellerId()
-  }) async {
-    try {
-      final id = identifier ?? getSellerId();
-      if (id.isEmpty) {
-        throw ProductException('Vendeur non identifié.');
-      }
-
-      final url = _buildUrl('/products/seller/$id/stats');
-      print('📈 Stats pour: $id');
+      final url = '${Constants.apiBaseUrl}/products/$productId';
       print('🌐 URL: $url');
 
       final response = await http
           .get(Uri.parse(url), headers: _getHeaders())
           .timeout(const Duration(seconds: 30));
 
+      print('📊 Status: ${response.statusCode}');
+
+      if (_isHtmlResponse(response.body)) {
+        throw ProductServiceException('ngrok_block');
+      }
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
-        return data;
+        return _parseProduct(data);
       } else {
         _handleError(response);
-        return {};
+        throw ProductServiceException('Produit non trouvé');
       }
     } catch (e) {
-      print('💥 Erreur stats: $e');
-      return {};
+      print('💥 Erreur détail produit: $e');
+      rethrow;
     }
   }
 
-  /// 11) Catégories du vendeur
-  Future<List<String>> getSellerCategories({
-    String? identifier, // optionnel, sinon utilise getSellerId()
-  }) async {
+  /// 7. Rechercher des produits
+  Future<List<Product>> searchProducts(String query, {int limit = 20}) async {
     try {
-      final id = identifier ?? getSellerId();
-      if (id.isEmpty) {
-        throw ProductException('Vendeur non identifié.');
-      }
+      if (query.length < 2) return [];
 
-      final url = _buildUrl('/products/seller/$id/categories');
-      print('🗂️ Catégories pour: $id');
+      print('🔎 Recherche: "$query"');
+
+      final encodedQuery = Uri.encodeComponent(query);
+      final url =
+          '${Constants.apiBaseUrl}/products/search?q=$encodedQuery&limit=$limit';
       print('🌐 URL: $url');
 
       final response = await http
           .get(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 15));
+
+      if (_isHtmlResponse(response.body)) {
+        // Fallback à la recherche locale
+        return _searchLocally(query);
+      }
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body) as List;
-        return data.cast<String>();
+        final data = json.decode(response.body);
+        final items = data is List ? data : (data['items'] as List? ?? []);
+        return _parseProducts(items);
       } else {
-        _handleError(response);
-        return [];
+        return _searchLocally(query);
       }
     } catch (e) {
-      print('💥 Erreur catégories: $e');
-      return [];
+      print('⚠️ Recherche API échouée, fallback local: $e');
+      return _searchLocally(query);
     }
   }
 
-  // ============================================
-  // MÉTHODES UTILITAIRES SIMPLES
-  // ============================================
-
-  /// Valider les données d'un produit
-  static List<String> validateProduct({
-    required String name,
-    required String category,
-    required double price,
-    required int stock,
-  }) {
-    final errors = <String>[];
-
-    if (name.isEmpty) errors.add('Le nom est obligatoire');
-    if (name.length < 2) errors.add('Le nom doit faire au moins 2 caractères');
-    if (category.isEmpty) errors.add('La catégorie est obligatoire');
-    if (price <= 0) errors.add('Le prix doit être supérieur à 0');
-    if (stock < 0) errors.add('Le stock ne peut pas être négatif');
-
-    return errors;
-  }
-
-  /// Filtrer par catégorie (local)
-  List<Product> filterByCategory(String category) {
-    if (category.isEmpty) return _products;
-    return _products.where((p) => p.categoryName == category).toList();
-  }
-
-  /// Rechercher localement
-  List<Product> searchLocally(String query) {
+  /// Recherche locale
+  List<Product> _searchLocally(String query) {
     if (query.isEmpty) return _products;
 
     final lowercaseQuery = query.toLowerCase();
@@ -634,31 +682,153 @@ class ProductService extends ChangeNotifier {
       return product.name.toLowerCase().contains(lowercaseQuery) ||
           product.codeArticle.toLowerCase().contains(lowercaseQuery) ||
           (product.description?.toLowerCase().contains(lowercaseQuery) ??
-              false);
+              false) ||
+          product.categoryName.toLowerCase().contains(lowercaseQuery);
     }).toList();
   }
 
-  /// Obtenir les catégories uniques (local)
-  List<String> getUniqueCategories() {
-    return _products
-        .map((p) => p.categoryName)
-        .where((c) => c.isNotEmpty)
-        .toSet()
-        .toList();
+  /// 8. Obtenir les catégories
+  Future<List<String>> getCategories() async {
+    try {
+      final sellerId = getSellerId();
+      if (sellerId.isEmpty) return _getLocalCategories();
+
+      final url =
+          '${Constants.apiBaseUrl}/products/seller/$sellerId/categories';
+      print('🗂️ Catégories pour: $sellerId');
+
+      final response = await http
+          .get(Uri.parse(url), headers: _getHeaders())
+          .timeout(const Duration(seconds: 10));
+
+      if (_isHtmlResponse(response.body)) {
+        return _getLocalCategories();
+      }
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as List;
+        return data.cast<String>();
+      } else {
+        return _getLocalCategories();
+      }
+    } catch (e) {
+      print('⚠️ Catégories API échouées, fallback local: $e');
+      return _getLocalCategories();
+    }
   }
 
-  /// Mettre à jour le statut d'un produit localement
+  /// Catégories locales
+  List<String> _getLocalCategories() {
+    return _products
+        .map((p) => p.categoryName)
+        .where((category) => category.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+  }
+
+  /// 9. Tester la connexion API
+  Future<bool> testConnection() async {
+    try {
+      print('🧪 Test connexion API...');
+
+      final url = '${Constants.apiBaseUrl}/products/filter?limit=1';
+      final response = await http
+          .get(Uri.parse(url), headers: _getHeaders())
+          .timeout(const Duration(seconds: 10));
+
+      if (_isHtmlResponse(response.body)) {
+        print('❌ NGROK BLOQUE LA CONNEXION');
+        return false;
+      }
+
+      print('✅ Connexion API OK - HTTP ${response.statusCode}');
+      return true;
+    } catch (e) {
+      print('❌ Test connexion échoué: $e');
+      return false;
+    }
+  }
+
+  // ============================================
+  // MÉTHODES UTILITAIRES POUR L'UI
+  // ============================================
+
+  /// Filtrer par catégorie
+  List<Product> filterByCategory(String category) {
+    if (category.isEmpty) return _products;
+    return _products.where((p) => p.categoryName == category).toList();
+  }
+
+  /// Filtrer par statut
+  List<Product> filterByStatus(bool isActive) {
+    return _products.where((p) => p.isActive == isActive).toList();
+  }
+
+  /// Trier les produits
+  List<Product> sortProducts(String sortBy, {bool descending = true}) {
+    final sorted = List<Product>.from(_products);
+
+    switch (sortBy) {
+      case 'name':
+        sorted.sort((a, b) => a.name.compareTo(b.name));
+        break;
+      case 'price':
+        sorted.sort((a, b) => a.price.compareTo(b.price));
+        break;
+      case 'stock':
+        sorted.sort((a, b) => a.stock.compareTo(b.stock));
+        break;
+      case 'created_at':
+        sorted.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        break;
+      default:
+        sorted.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    }
+
+    return descending ? sorted.reversed.toList() : sorted;
+  }
+
+  /// Mettre à jour le statut localement
   void updateProductStatus(String productId, bool isActive) {
     final index = _products.indexWhere((p) => p.id == productId);
     if (index != -1) {
       _products[index] = _products[index].copyWith(isActive: isActive);
       notifyListeners();
+
+      // Recalculer les stats
+      loadSellerStats();
     }
   }
 
-  /// Vider les produits (pour logout)
+  /// Vider les produits
   void clearProducts() {
-    _products = [];
+    _products.clear();
+    _stats = null;
     notifyListeners();
+  }
+
+  /// Rafraîchir toutes les données
+  Future<void> refresh() async {
+    await loadMyProducts();
+    await loadSellerStats();
+  }
+
+  /// Valider les données d'un produit
+  static List<String> validateProduct({
+    required String name,
+    required String categoryName,
+    required double price,
+    required int stock,
+  }) {
+    final errors = <String>[];
+
+    if (name.isEmpty) errors.add('Le nom est obligatoire');
+    if (name.length < 2) errors.add('Le nom doit faire au moins 2 caractères');
+    if (categoryName.isEmpty) errors.add('La catégorie est obligatoire');
+    if (price <= 0) errors.add('Le prix doit être supérieur à 0');
+    if (stock < 0) errors.add('Le stock ne peut pas être négatif');
+
+    return errors;
   }
 }

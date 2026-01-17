@@ -1,4 +1,4 @@
-// lib/screens/facebook_integration_screen.dart - VERSION COMPLÈTEMENT CORRIGÉE
+// lib/screens/facebook_integration_screen.dart - VERSION CORRIGÉE
 import 'package:commerce/models/facebook_models.dart';
 import 'package:commerce/provider/facebook_provider.dart';
 import 'package:flutter/material.dart';
@@ -311,7 +311,8 @@ class _PostsSection extends StatelessWidget {
       );
     }
 
-    return const PostsFeedSection();
+    // SOLUTION TEMPORAIRE: Passer une liste vide
+    return PostsFeedSection(posts: []);
   }
 }
 
@@ -360,7 +361,8 @@ class _LiveCommerceSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        const LivesSection(),
+        // SOLUTION TEMPORAIRE: Passer une liste vide
+        LivesSection(lives: []),
       ],
     );
   }
