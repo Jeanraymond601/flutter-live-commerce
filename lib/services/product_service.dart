@@ -325,6 +325,36 @@ class ProductService extends ChangeNotifier {
     }
   }
 
+  List<Map<String, dynamic>>? _salesChartData;
+
+  List<Map<String, dynamic>>? get salesChartData => _salesChartData;
+
+  Future<void> loadSalesData() async {
+    try {
+      // ignore: await_only_futures
+      final token = await getAuthToken();
+      final sellerId = getSellerId();
+
+      final response = await http.get(
+        Uri.parse('${Constants.getApiUrl()}/seller/$sellerId/sales'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _salesChartData = List<Map<String, dynamic>>.from(
+          data['sales_data'] ?? [],
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Erreur chargement données ventes: $e');
+    }
+  }
+
   /// Méthode helper pour /products/filter
   Future<List<Product>> _getProductsByFilter({
     required String sellerId,

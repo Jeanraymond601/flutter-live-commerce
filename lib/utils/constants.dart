@@ -1,6 +1,6 @@
 // lib/constants/constants.dart
 class Constants {
-  static const String apiBaseUrl = 'https://3d1a525dacf6.ngrok-free.app';
+  static const String apiBaseUrl = 'https://6b6fa00ef325.ngrok-free.app';
   static const String apiPrefix = '/api/v1';
 
   // ================================

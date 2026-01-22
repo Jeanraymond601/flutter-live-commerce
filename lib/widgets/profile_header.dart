@@ -1,151 +1,171 @@
+// lib/widgets/profile_header.dart
 import 'package:flutter/material.dart';
-import '../models/seller_profile.dart';
+import 'package:provider/provider.dart';
+import '../notifiers/seller_profile_notifier.dart';
 
 class ProfileHeader extends StatelessWidget {
-  final SellerProfile sellerProfile;
   final VoidCallback onImageTap;
 
-  const ProfileHeader({
-    super.key,
-    required this.sellerProfile,
-    required this.onImageTap,
-  });
+  const ProfileHeader({super.key, required this.onImageTap});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-
-    // Définir les couleurs de manière explicite pour éviter les null
-    final avatarBackgroundColor = isDarkMode
-        ? Colors.grey.shade700
-        : Colors.grey.shade200;
-    final iconColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade500;
-    final buttonTextColor = isDarkMode ? Colors.white : Colors.grey.shade700;
-    final buttonBorderColor = isDarkMode
-        ? Colors.grey.shade600
-        : Colors.grey.shade300;
+    final sellerProfile = Provider.of<SellerProfileNotifier>(context).profile;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDarkMode ? Colors.grey.shade800 : Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.grey.withOpacity(0.1),
             blurRadius: 15,
-            offset: const Offset(0, 5),
+            spreadRadius: 3,
+            offset: const Offset(0, 4),
           ),
         ],
+        border: Border.all(color: Colors.grey.shade200, width: 1),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Avatar avec badge
-          Stack(
-            alignment: Alignment.bottomRight,
+          // Avatar et informations
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Avatar
               GestureDetector(
                 onTap: onImageTap,
                 child: Container(
-                  width: 100,
-                  height: 100,
+                  width: 80,
+                  height: 80,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: sellerProfile.subscription.color,
-                      width: 3,
+                      color: const Color(0xFF005DFF),
+                      width: 2,
                     ),
                   ),
                   child: CircleAvatar(
-                    radius: 45,
-                    backgroundColor: avatarBackgroundColor,
+                    radius: 38,
+                    backgroundColor: Colors.grey.shade100,
                     backgroundImage: sellerProfile.profileImageUrl != null
                         ? NetworkImage(sellerProfile.profileImageUrl!)
                         : null,
                     child: sellerProfile.profileImageUrl == null
-                        ? Icon(Icons.person, size: 40, color: iconColor)
+                        ? const Icon(
+                            Icons.person,
+                            size: 40,
+                            color: Color(0xFF005DFF),
+                          )
                         : null,
                   ),
                 ),
               ),
-              // Badge de statut
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: sellerProfile.statusColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-                child: Text(
-                  sellerProfile.statusLabel,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
+
+              const SizedBox(width: 20),
+
+              // Informations du profil
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Nom
+                    Text(
+                      sellerProfile.fullName,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    // Nom de l'entreprise
+                    Text(
+                      sellerProfile.companyName,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // Statut "Actif"
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.green, width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Actif',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          // Nom complet
-          Text(
-            sellerProfile.fullName,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: isDarkMode ? Colors.white : Colors.black87,
-            ),
-          ),
-
-          const SizedBox(height: 4),
-
-          // Nom de l'entreprise
-          Text(
-            sellerProfile.companyName,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: sellerProfile.subscription.color,
-            ),
-          ),
-
-          const SizedBox(height: 4),
-
-          // Rôle
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: sellerProfile.subscription.color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              'Vendeur',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: sellerProfile.subscription.color,
+          // Bouton "Changer le profil"
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onImageTap,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF005DFF),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+                shadowColor: const Color(0xFF005DFF).withOpacity(0.3),
+              ),
+              icon: const Icon(Icons.edit, size: 20),
+              label: const Text(
+                'Changer le profil',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Bouton modifier l'avatar
-          OutlinedButton.icon(
-            onPressed: onImageTap,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: buttonTextColor,
-              side: BorderSide(color: buttonBorderColor),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.camera_alt_outlined, size: 16),
-            label: const Text('Modifier la photo'),
           ),
         ],
       ),

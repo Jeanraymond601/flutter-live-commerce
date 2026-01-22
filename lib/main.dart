@@ -1,5 +1,6 @@
-import 'package:commerce/provider/facebook_provider.dart';
-import 'package:commerce/screens/seller_profile_screen.dart';
+// lib/main.dart
+// ignore_for_file: avoid_print, use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Models
 import 'package:commerce/models/product.dart';
 import 'package:commerce/models/abonnement.dart';
-import 'package:commerce/models/seller_profile.dart';
 
 // Services
 import 'package:commerce/services/auth_service.dart';
@@ -19,6 +19,10 @@ import 'package:commerce/services/seller_service.dart';
 
 // Facebook Services & Providers
 import 'package:commerce/services/facebook_service.dart';
+import 'package:commerce/provider/facebook_provider.dart';
+
+// Notifiers
+import 'package:commerce/notifiers/seller_profile_notifier.dart';
 
 // Screens
 import 'package:commerce/screens/splash_screen.dart';
@@ -34,11 +38,12 @@ import 'package:commerce/screens/drivers/driver_list_screen.dart';
 import 'package:commerce/screens/drivers/create_driver_screen.dart';
 import 'package:commerce/screens/drivers/edit_driver_screen.dart';
 import 'package:commerce/screens/abonnement_screen.dart';
+import 'package:commerce/screens/seller_profile_screen.dart';
 
 // NOUVEAUX ÉCRANS AJOUTÉS
-import 'package:commerce/screens/orders_screen.dart'; // Écran des commandes
-import 'package:commerce/screens/deliveries_screen.dart'; // Écran des livraisons
-import 'package:commerce/screens/facebook_integration_screen.dart'; // Écran d'intégration Facebook
+import 'package:commerce/screens/orders_screen.dart';
+import 'package:commerce/screens/deliveries_screen.dart';
+import 'package:commerce/screens/facebook_integration_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -100,6 +105,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Services d'authentification
         ChangeNotifierProvider<AuthService>.value(value: authService),
 
         // Services Facebook
@@ -112,6 +118,7 @@ class MyApp extends StatelessWidget {
               FacebookProvider(context.read<FacebookService>()),
         ),
 
+        // Services métier
         ChangeNotifierProvider<ProductService>(
           create: (context) {
             return ProductService(
@@ -145,14 +152,39 @@ class MyApp extends StatelessWidget {
 
         Provider<AbonnementService>(create: (context) => AbonnementService()),
 
-        // Ajout du service pour le profil vendeur
+        // Service pour le profil vendeur
         Provider<SellerService>(create: (context) => SellerService()),
+
+        // Notifier pour le profil vendeur
+        ChangeNotifierProvider<SellerProfileNotifier>(
+          create: (context) {
+            final auth = context.read<AuthService>();
+            final currentVendor = auth.currentVendor;
+
+            // Créer un profil vendeur initial à partir de l'authentification
+            final initialProfile = SellerProfile(
+              id: currentVendor?.id ?? '',
+              fullName: currentVendor?.name ?? 'Non défini',
+              email: currentVendor?.email ?? '',
+              phone: currentVendor?.phone ?? '',
+              address: currentVendor?.address ?? '',
+              companyName: currentVendor?.companyName ?? '',
+              status: 'active',
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+              facebookInfo: const {},
+            );
+
+            return SellerProfileNotifier(initialProfile);
+          },
+        ),
       ],
       child: MaterialApp(
         title: 'Live Commerce',
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(),
         home: const SplashScreen(),
+
         // ROUTES STATIQUES
         routes: {
           '/login': (context) => const LoginScreen(),
@@ -165,15 +197,12 @@ class MyApp extends StatelessWidget {
           '/drivers/create': (context) => const CreateDriverScreen(),
           '/abonnement': (context) => const AbonnementScreen(),
           '/sellerprofil': (context) => const SellerProfileScreen(),
-          '/profile': (context) =>
-              const SellerProfileScreen(), // Alias plus court
-          // NOUVELLES ROUTES AJOUTÉES
-          '/orders': (context) => const OrdersScreen(), // Écran des commandes
-          '/deliveries': (context) =>
-              const DeliveriesScreen(), // Écran des livraisons
-          '/facebook': (context) =>
-              const FacebookIntegrationScreen(), // Écran d'intégration Facebook
+          '/profile': (context) => const SellerProfileScreen(),
+          '/orders': (context) => const OrdersScreen(),
+          '/deliveries': (context) => const DeliveriesScreen(),
+          '/facebook': (context) => const FacebookIntegrationScreen(),
         },
+
         // ROUTES DYNAMIQUES (avec arguments)
         onGenerateRoute: (settings) {
           // Route pour l'édition d'un produit
@@ -237,176 +266,6 @@ class MyApp extends StatelessWidget {
 
             return MaterialPageRoute(
               builder: (_) => EditDriverScreen(driver: driver),
-            );
-          }
-
-          // Route pour l'abonnement (peut être appelée avec des paramètres)
-          if (settings.name == '/abonnement/plan') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final planId = args['planId'] as String?;
-
-            return MaterialPageRoute(
-              builder: (_) {
-                final screen = const AbonnementScreen();
-                // Si un plan est spécifié, vous pouvez le pré-sélectionner
-                if (planId != null) {
-                  // Vous pouvez passer ces données via un provider ou autre mécanisme
-                  return screen;
-                }
-                return screen;
-              },
-            );
-          }
-
-          // Route pour le profil avec paramètres
-          if (settings.name == '/profile/edit') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final _ = args['sellerProfile'] as SellerProfile?;
-
-            return MaterialPageRoute(
-              builder: (_) {
-                // Vous pouvez créer un écran d'édition de profil ici
-                // Pour l'instant, retourner le profil normal
-                return const SellerProfileScreen();
-              },
-            );
-          }
-
-          // NOUVELLES ROUTES DYNAMIQUES POUR FACEBOOK
-
-          // Route pour l'intégration Facebook avec paramètres
-          if (settings.name == '/facebook/connect') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final _ = args['pageId'] as String?;
-            final _ = args['autoConnect'] as bool? ?? false;
-
-            return MaterialPageRoute(
-              builder: (_) => FacebookIntegrationScreen(),
-            );
-          }
-
-          // Route pour les pages Facebook spécifiques
-          if (settings.name == '/facebook/pages') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final _ = args['pageId'] as String?;
-
-            return MaterialPageRoute(
-              builder: (_) => FacebookIntegrationScreen(),
-            );
-          }
-
-          // Route pour les publications Facebook
-          if (settings.name == '/facebook/posts') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final _ = args['postId'] as String?;
-            final _ = args['pageId'] as String?;
-
-            return MaterialPageRoute(
-              builder: (_) => FacebookIntegrationScreen(),
-            );
-          }
-
-          // Route pour les lives Facebook
-          if (settings.name == '/facebook/lives') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final _ = args['liveId'] as String?;
-            final _ = args['autoPlay'] as bool? ?? false;
-
-            return MaterialPageRoute(
-              builder: (_) => FacebookIntegrationScreen(),
-            );
-          }
-
-          // Route pour les commentaires Facebook
-          if (settings.name == '/facebook/comments') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final _ = args['postId'] as String?;
-            final _ = args['liveId'] as String?;
-            final _ = args['showReplies'] as bool? ?? false;
-
-            return MaterialPageRoute(
-              builder: (_) => FacebookIntegrationScreen(),
-            );
-          }
-
-          // Route pour les notifications Facebook
-          if (settings.name == '/facebook/notifications') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final _ = args['filterType'] as String?;
-            final _ = args['markAsRead'] as bool? ?? false;
-
-            return MaterialPageRoute(
-              builder: (_) => FacebookIntegrationScreen(),
-            );
-          }
-
-          // Route pour les commandes avec filtres
-          if (settings.name == '/orders/filter') {
-            final _ = settings.arguments as Map<String, dynamic>? ?? {};
-            // Ces paramètres seront gérés par l'écran lui-même via les arguments
-            return MaterialPageRoute(builder: (_) => const OrdersScreen());
-          }
-
-          // Route pour les détails d'une commande
-          if (settings.name == '/orders/details') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final orderId = args['orderId'] as String?;
-
-            return MaterialPageRoute(
-              builder: (_) {
-                if (orderId == null) {
-                  return const Scaffold(
-                    body: Center(child: Text('Commande non trouvée')),
-                  );
-                }
-                // Ici, vous pouvez créer un écran de détails séparé
-                // Pour l'instant, on retourne l'écran principal
-                return const OrdersScreen();
-              },
-            );
-          }
-
-          // Route pour les livraisons avec filtres
-          if (settings.name == '/deliveries/filter') {
-            final _ = settings.arguments as Map<String, dynamic>? ?? {};
-            // Ces paramètres seront gérés par l'écran lui-même via les arguments
-            return MaterialPageRoute(builder: (_) => const DeliveriesScreen());
-          }
-
-          // Route pour les détails d'une livraison
-          if (settings.name == '/deliveries/details') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final deliveryId = args['deliveryId'] as String?;
-
-            return MaterialPageRoute(
-              builder: (_) {
-                if (deliveryId == null) {
-                  return const Scaffold(
-                    body: Center(child: Text('Livraison non trouvée')),
-                  );
-                }
-                // Ici, vous pouvez créer un écran de détails séparé
-                // Pour l'instant, on retourne l'écran principal
-                return const DeliveriesScreen();
-              },
-            );
-          }
-
-          // Route pour suivre une livraison en temps réel
-          if (settings.name == '/deliveries/track') {
-            final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final deliveryId = args['deliveryId'] as String?;
-
-            return MaterialPageRoute(
-              builder: (_) {
-                if (deliveryId == null) {
-                  return const Scaffold(
-                    body: Center(child: Text('Livraison non trouvée')),
-                  );
-                }
-                // Pour l'instant, on retourne l'écran principal
-                return const DeliveriesScreen();
-              },
             );
           }
 
@@ -487,7 +346,7 @@ class MyApp extends StatelessWidget {
                               Navigator.pushNamed(context, '/facebook'),
                           icon: const Icon(Icons.facebook, size: 18),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Color(0xFF1877F2), // Bleu Facebook
+                            backgroundColor: Color(0xFF1877F2),
                           ),
                           label: const Text('Facebook'),
                         ),
@@ -530,11 +389,10 @@ class MyApp extends StatelessWidget {
         seedColor: Colors.blue,
         brightness: Brightness.light,
         secondary: Colors.green,
-        tertiary: Colors.orange, // Pour les commandes
-        tertiaryContainer: Colors.purple, // Pour les livraisons
+        tertiary: Colors.orange,
+        tertiaryContainer: Colors.purple,
       ),
       primarySwatch: Colors.blue,
-      // SUPPRIMÉ: fontFamily: 'Roboto', // Laisser Flutter utiliser sa police par défaut
       appBarTheme: const AppBarTheme(
         elevation: 1,
         backgroundColor: Colors.white,
@@ -544,7 +402,6 @@ class MyApp extends StatelessWidget {
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: Colors.black87,
-          // SUPPRIMÉ: fontFamily: 'Roboto',
         ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
@@ -590,11 +447,7 @@ class MyApp extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            // SUPPRIMÉ: fontFamily: 'Roboto',
-          ),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           elevation: 2,
           shadowColor: Colors.blue.withOpacity(0.3),
         ),
@@ -603,14 +456,9 @@ class MyApp extends StatelessWidget {
         style: TextButton.styleFrom(
           foregroundColor: Colors.blue,
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            // SUPPRIMÉ: fontFamily: 'Roboto',
-          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
         ),
       ),
-      // CORRECTION: CardTheme (pas CardThemeData)
       cardTheme: CardThemeData(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

@@ -1,16 +1,11 @@
 // lib/screens/dashboard_screen.dart - VERSION AVANCÉE AVEC GRAPHIQUES DYNAMIQUES
-import 'package:commerce/screens/abonnement_screen.dart';
-import 'package:commerce/screens/deliveries_screen.dart';
-import 'package:commerce/screens/facebook_integration_screen.dart';
-import 'package:commerce/screens/orders_screen.dart';
-import 'package:commerce/screens/seller_profile_screen.dart';
+// ignore_for_file: avoid_print
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
 import 'package:commerce/models/product.dart';
-import 'package:commerce/screens/drivers/driver_list_screen.dart';
-import 'package:commerce/screens/product_management_screen.dart';
 import 'package:commerce/services/auth_service.dart';
 import 'package:commerce/services/driver_service.dart';
 import 'package:commerce/services/product_service.dart' as product_service;
@@ -41,21 +36,19 @@ class _DashboardListScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _productStats;
 
   // Données pour les graphiques
-  // Graphique Revenus
   List<RevenueData> _revenueData = [];
   String _revenueTimeFilter = 'mois';
-  String _revenueChartType = 'ligne'; // 'ligne' ou 'barre'
+  String _revenueChartType = 'ligne';
 
-  // Graphique Ventes
   List<SalesData> _salesData = [];
   String _salesTimeFilter = 'mois';
-  String _salesChartType = 'barre'; // 'ligne' ou 'barre'
+  String _salesChartType = 'barre';
 
   final Map<int, String> _pageTitles = {
     0: 'Tableau de bord',
     1: 'Gestion des produits',
     2: 'Commandes',
-    3: 'Livraison',
+    3: 'Livraisons',
     4: 'Gestion des livreurs',
     5: 'Abonnement',
     6: 'Profil',
@@ -90,10 +83,11 @@ class _DashboardListScreenState extends State<DashboardScreen> {
       await Future.wait([
         _loadMyProducts(productService),
         _loadProductStats(productService),
+        _loadSalesDataFromAPI(productService),
       ]);
 
       _calculateStatistics();
-      _generateChartData();
+      _generateChartDataFromService(productService);
 
       if (mounted) {
         setState(() => _isLoading = false);
@@ -130,34 +124,37 @@ class _DashboardListScreenState extends State<DashboardScreen> {
     product_service.ProductService productService,
   ) async {
     try {
-      // Appelle la méthode qui charge les stats
       await productService.loadSellerStats();
 
-      // Récupère les stats depuis le getter
       if (mounted && productService.stats != null) {
         setState(() => _productStats = productService.stats!);
       }
     } catch (e) {
-      // ignore: avoid_print
       print('⚠️ Erreur chargement stats: $e');
-      // Les stats ne sont pas critiques, on peut continuer
+    }
+  }
+
+  Future<void> _loadSalesDataFromAPI(
+    product_service.ProductService productService,
+  ) async {
+    try {
+      // Appelle l'API pour récupérer les données de vente
+      await productService.loadSalesData();
+    } catch (e) {
+      print('⚠️ Erreur chargement données ventes: $e');
     }
   }
 
   void _calculateStatistics() {
-    // Produits totaux
     _totalProducts =
         _productStats?['total_products']?.toInt() ?? _products.length;
 
-    // Stock total
     _totalStock =
         _productStats?['total_stock']?.toInt() ??
         _products.fold(0, (sum, product) => sum + product.stock);
 
-    // Produits en stock faible (≤ 10 unités)
     _lowStockProducts = _products.where((p) => p.stock <= 10).length;
 
-    // Valeur totale du stock (en DZD)
     _stockValue =
         _productStats?['total_value']?.toDouble() ??
         _products.fold(
@@ -166,10 +163,37 @@ class _DashboardListScreenState extends State<DashboardScreen> {
         );
   }
 
-  void _generateChartData() {
-    // Générer les données initiales
-    _updateRevenueData();
-    _updateSalesData();
+  void _generateChartDataFromService(
+    product_service.ProductService productService,
+  ) {
+    // Utiliser les données réelles du service si disponibles
+    if (productService.salesChartData != null &&
+        productService.salesChartData!.isNotEmpty) {
+      _updateRevenueDataFromService(productService.salesChartData!);
+      _updateSalesDataFromService(productService.salesChartData!);
+    } else {
+      // Données de démonstration
+      _updateRevenueData();
+      _updateSalesData();
+    }
+  }
+
+  void _updateRevenueDataFromService(List<Map<String, dynamic>> salesData) {
+    _revenueData = salesData.map((data) {
+      return RevenueData(
+        data['period']?.toString() ?? '',
+        (data['revenue'] ?? 0).toDouble(),
+      );
+    }).toList();
+  }
+
+  void _updateSalesDataFromService(List<Map<String, dynamic>> salesData) {
+    _salesData = salesData.map((data) {
+      return SalesData(
+        data['period']?.toString() ?? '',
+        (data['sales'] ?? 0).toDouble(),
+      );
+    }).toList();
   }
 
   void _updateRevenueData() {
@@ -177,7 +201,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
     switch (_revenueTimeFilter) {
       case 'jour':
-        // Données quotidiennes (7 derniers jours)
         _revenueData = [];
         for (int i = 6; i >= 0; i--) {
           final date = now.subtract(Duration(days: i));
@@ -188,7 +211,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
         break;
 
       case 'semaine':
-        // Données hebdomadaires (4 dernières semaines)
         _revenueData = [
           RevenueData('S1', 42000.0),
           RevenueData('S2', 38000.0),
@@ -198,7 +220,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
         break;
 
       case 'mois':
-        // Données mensuelles (12 derniers mois)
         _revenueData = [
           RevenueData('Jan', 45000.0),
           RevenueData('Fév', 52000.0),
@@ -222,7 +243,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
     switch (_salesTimeFilter) {
       case 'jour':
-        // Données quotidiennes (7 derniers jours)
         _salesData = [];
         for (int i = 6; i >= 0; i--) {
           final date = now.subtract(Duration(days: i));
@@ -233,7 +253,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
         break;
 
       case 'semaine':
-        // Données hebdomadaires (4 dernières semaines)
         _salesData = [
           SalesData('S1', 42000.0),
           SalesData('S2', 38000.0),
@@ -243,7 +262,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
         break;
 
       case 'mois':
-        // Données mensuelles (6 derniers mois)
         _salesData = [
           SalesData('Jan', 45000.0),
           SalesData('Fév', 52000.0),
@@ -276,7 +294,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
     switch (index) {
       case 0:
-        // Tableau de bord - déjà sur cette page
         break;
       case 1:
         _navigateToProductManagement();
@@ -311,12 +328,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   Future<void> _navigateToFacebookIntegration() async {
     try {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const FacebookIntegrationScreen(),
-        ),
-      );
+      Navigator.pushNamed(context, '/facebook');
     } catch (e) {
       _showErrorSnackbar('Erreur lors de la navigation: $e');
     }
@@ -324,10 +336,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   Future<void> _navigateToOrderManagement() async {
     try {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const OrdersScreen()),
-      );
+      Navigator.pushNamed(context, '/orders');
     } catch (e) {
       _showErrorSnackbar('Erreur lors de la navigation: $e');
     }
@@ -335,10 +344,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   Future<void> _navigateToDeliveryManagement() async {
     try {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const DeliveriesScreen()),
-      );
+      Navigator.pushNamed(context, '/deliveries');
     } catch (e) {
       _showErrorSnackbar('Erreur lors de la navigation: $e');
     }
@@ -346,10 +352,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   Future<void> _navigateToSellerProfile() async {
     try {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const SellerProfileScreen()),
-      );
+      Navigator.pushNamed(context, '/profile');
     } catch (e) {
       _showErrorSnackbar('Erreur lors de la navigation: $e');
     }
@@ -357,10 +360,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   Future<void> _navigateToAbonnement() async {
     try {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const AbonnementScreen()),
-      );
+      Navigator.pushNamed(context, '/abonnement');
     } catch (e) {
       _showErrorSnackbar('Erreur lors de la navigation: $e');
     }
@@ -368,12 +368,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   Future<void> _navigateToProductManagement() async {
     try {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const ProductManagementScreen(),
-        ),
-      );
+      Navigator.pushNamed(context, '/products');
     } catch (e) {
       _showErrorSnackbar('Erreur: $e');
     }
@@ -381,16 +376,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   Future<void> _navigateToDriverManagement() async {
     try {
-      final driverService = Provider.of<DriverService>(context, listen: false);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChangeNotifierProvider.value(
-            value: driverService,
-            child: const DriverListScreen(),
-          ),
-        ),
-      );
+      Navigator.pushNamed(context, '/drivers');
     } catch (e) {
       _showErrorSnackbar('Erreur: $e');
     }
@@ -408,8 +394,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final vendor = Provider.of<AuthService>(context).currentVendor;
-    final vendorName = vendor?.name ?? 'Vendeur';
+    Provider.of<DriverService>(context);
 
     return Scaffold(
       body: Stack(
@@ -426,7 +411,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
             top: 0,
             bottom: 0,
             child: SidebarMenu(
-              vendorName: vendorName,
               onItemSelected: _onSidebarItemSelected,
               onClose: _closeSidebar,
               selectedIndex: _selectedMenuIndex,
@@ -527,11 +511,8 @@ class _DashboardListScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // SECTION 1: CARTES STATISTIQUES
             _buildStatsCards(),
             const SizedBox(height: 24),
-
-            // SECTION 2: GRAPHIQUES DYNAMIQUES
             _buildChartsSection(),
             const SizedBox(height: 20),
           ],
@@ -559,9 +540,8 @@ class _DashboardListScreenState extends State<DashboardScreen> {
           crossAxisCount: 2,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.0, // CORRIGÉ: 1.0 au lieu de 1.2
+          childAspectRatio: 1.0,
           children: [
-            // CARTE 1: Produits totaux
             _buildStatCard(
               title: 'Produits totaux',
               value: _totalProducts.toString(),
@@ -570,8 +550,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
               color: Colors.blue,
               trend: '+12%',
             ),
-
-            // CARTE 2: Stock total
             _buildStatCard(
               title: 'Stock total',
               value: _totalStock.toString(),
@@ -580,8 +558,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
               color: Colors.green,
               trend: '+5%',
             ),
-
-            // CARTE 3: Stock faible
             _buildStatCard(
               title: 'Stock faible',
               value: _lowStockProducts.toString(),
@@ -592,8 +568,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
               color: _lowStockProducts > 0 ? Colors.orange : Colors.grey,
               trend: _lowStockProducts > 0 ? '⚠️ Attention' : '✅ Bon',
             ),
-
-            // CARTE 4: Valeur du stock
             _buildStatCard(
               title: 'Valeur du stock',
               value: 'AR ${NumberFormat('#,##0').format(_stockValue)}',
@@ -629,33 +603,25 @@ class _DashboardListScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(12), // CORRIGÉ: réduit de 16 à 12
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment:
-            MainAxisAlignment.center, // CORRIGÉ: center au lieu de spaceBetween
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                width: 36, // CORRIGÉ: réduit de 40 à 36
+                width: 36,
                 height: 36,
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 20,
-                ), // CORRIGÉ: réduit de 22 à 20
+                child: Icon(icon, color: color, size: 20),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 3,
-                ), // CORRIGÉ: réduit
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(6),
@@ -663,7 +629,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
                 child: Text(
                   trend,
                   style: TextStyle(
-                    fontSize: 9, // CORRIGÉ: réduit de 10 à 9
+                    fontSize: 9,
                     fontWeight: FontWeight.w500,
                     color: color == Colors.orange && title == 'Stock faible'
                         ? Colors.orange
@@ -673,11 +639,11 @@ class _DashboardListScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 6), // CORRIGÉ: réduit de 8 à 6
+          const SizedBox(height: 6),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 18, // CORRIGÉ: réduit de 20 à 18
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               height: 1.1,
             ),
@@ -686,7 +652,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
           Text(
             title,
             style: const TextStyle(
-              fontSize: 12, // CORRIGÉ: réduit de 14 à 12
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
@@ -694,12 +660,9 @@ class _DashboardListScreenState extends State<DashboardScreen> {
           const SizedBox(height: 1),
           Text(
             subtitle,
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey[600],
-            ), // CORRIGÉ: réduit de 11 à 10
-            maxLines: 1, // CORRIGÉ: ajouté
-            overflow: TextOverflow.ellipsis, // CORRIGÉ: ajouté
+            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -710,7 +673,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth > 600) {
-          // Écran large: graphiques côte à côte
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -720,7 +682,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
             ],
           );
         } else {
-          // Écran étroit: graphiques empilés
           return Column(
             children: [
               _buildRevenueChart(),
@@ -746,7 +707,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // EN-TÊTE AVEC FILTRES
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -760,8 +720,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
-
-              // DROPDOWN TYPE DE GRAPHIQUE
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
@@ -776,9 +734,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
                     elevation: 16,
                     style: const TextStyle(fontSize: 14, color: Colors.black87),
                     onChanged: (String? newValue) {
-                      setState(() {
-                        _revenueChartType = newValue!;
-                      });
+                      setState(() => _revenueChartType = newValue!);
                     },
                     items: <String>['ligne', 'barre']
                         .map<DropdownMenuItem<String>>((String value) {
@@ -811,10 +767,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 8),
-
-          // FILTRES TEMPORELS
           Container(
             decoration: BoxDecoration(
               color: Colors.grey[50],
@@ -863,20 +816,14 @@ class _DashboardListScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 16),
-
-          // GRAPHIQUE
           SizedBox(
             height: 200,
             child: _revenueChartType == 'ligne'
                 ? _buildLineChart(_revenueData, Colors.green, true)
                 : _buildBarChart(_revenueData, Colors.green, true),
           ),
-
           const SizedBox(height: 8),
-
-          // PIED DE PAGE AVEC TOTAL
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -925,7 +872,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // EN-TÊTE AVEC FILTRES
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -939,8 +885,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
-
-              // DROPDOWN TYPE DE GRAPHIQUE
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
@@ -955,9 +899,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
                     elevation: 16,
                     style: const TextStyle(fontSize: 14, color: Colors.black87),
                     onChanged: (String? newValue) {
-                      setState(() {
-                        _salesChartType = newValue!;
-                      });
+                      setState(() => _salesChartType = newValue!);
                     },
                     items: <String>['ligne', 'barre']
                         .map<DropdownMenuItem<String>>((String value) {
@@ -990,10 +932,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 8),
-
-          // FILTRES TEMPORELS
           Container(
             decoration: BoxDecoration(
               color: Colors.grey[50],
@@ -1042,20 +981,14 @@ class _DashboardListScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 16),
-
-          // GRAPHIQUE
           SizedBox(
             height: 200,
             child: _salesChartType == 'ligne'
                 ? _buildLineChart(_salesData, Colors.blue, false)
                 : _buildBarChart(_salesData, Colors.blue, false),
           ),
-
           const SizedBox(height: 8),
-
-          // PIED DE PAGE AVEC TOTAL
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

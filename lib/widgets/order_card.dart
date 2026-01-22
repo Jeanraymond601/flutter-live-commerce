@@ -4,95 +4,133 @@ import 'status_badge.dart';
 
 class OrderCard extends StatelessWidget {
   final Order order;
-  final VoidCallback onAccept;
-  final VoidCallback onReject;
 
-  const OrderCard({
-    super.key,
-    required this.order,
-    required this.onAccept,
-    required this.onReject,
-  });
+  const OrderCard({super.key, required this.order});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final theme = Theme.of(context);
+
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête avec nom client et statut
+            // =========================
+            // HEADER : CLIENT + STATUT
+            // =========================
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
                   child: Text(
-                    order.customerName,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+                    _getInitials(order.customerName),
+                    style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
-                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Commande automatique',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 StatusBadge(status: order.status),
               ],
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
-            // Adresse complète
-            _buildInfoRow(
+            // =========================
+            // ADRESSE
+            // =========================
+            _infoBlock(
               context,
               icon: Icons.location_on_outlined,
-              title: 'Adresse',
-              value: '${order.neighborhood}, ${order.city}',
-              subtitle: order.phone,
+              title: 'Adresse de livraison',
+              mainText: '${order.neighborhood}, ${order.city}',
+              subText: order.phone,
             ),
 
             const SizedBox(height: 12),
 
-            // Produit commandé
-            _buildInfoRow(
+            // =========================
+            // PRODUIT
+            // =========================
+            _infoBlock(
               context,
               icon: Icons.shopping_bag_outlined,
-              title: 'Produit',
-              value: order.productName,
-              subtitle: 'Quantité: ${order.quantity}',
+              title: 'Produit commandé',
+              mainText: order.productName,
+              subText: 'Quantité : ${order.quantity}',
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
-            // Prix et frais
+            // =========================
+            // PRIX
+            // =========================
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                borderRadius: BorderRadius.circular(12),
+                color: theme.colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Column(
                 children: [
-                  _buildPriceRow(
+                  _priceRow(
                     context,
                     label: 'Prix unitaire',
                     value: '${order.productPrice.toStringAsFixed(2)} €',
                   ),
-                  _buildPriceRow(
+                  _priceRow(
                     context,
                     label: 'Total produit',
                     value: '${order.totalPrice.toStringAsFixed(2)} €',
                   ),
-                  _buildPriceRow(
+                  _priceRow(
                     context,
-                    icon: Icons.local_shipping_outlined,
-                    label: 'Frais livraison',
+                    label: 'Frais de livraison',
                     value: '${order.deliveryFee.toStringAsFixed(2)} €',
                   ),
-                  const Divider(height: 16),
-                  _buildPriceRow(
+                  const Divider(height: 18),
+                  _priceRow(
                     context,
-                    label: 'Total final',
+                    label: 'Total à payer',
                     value: '${order.finalTotal.toStringAsFixed(2)} €',
                     isTotal: true,
                   ),
@@ -100,38 +138,50 @@ class OrderCard extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
-            // Date de commande
-            Text(
-              'Commande du ${_formatDate(order.orderDate)}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            // =========================
+            // DATE
+            // =========================
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'Commandée le ${_formatDate(order.orderDate)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.55),
+                ),
               ),
             ),
-
-            const SizedBox(height: 16),
-
-            // Boutons d'action
-            if (order.status == OrderStatus.pending)
-              _buildActionButtons(context),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(
+  // =========================
+  // INFO BLOCK
+  // =========================
+  Widget _infoBlock(
     BuildContext context, {
     required IconData icon,
     required String title,
-    required String value,
-    String? subtitle,
+    required String mainText,
+    String? subText,
   }) {
+    final theme = Theme.of(context);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 20, color: theme.colorScheme.primary),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -139,25 +189,21 @@ class OrderCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withOpacity(0.6),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
                 ),
               ),
               Text(
-                value,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                mainText,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              if (subtitle != null)
+              if (subText != null)
                 Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withOpacity(0.6),
+                  subText,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.55),
                   ),
                 ),
             ],
@@ -167,34 +213,35 @@ class OrderCard extends StatelessWidget {
     );
   }
 
-  Widget _buildPriceRow(
+  // =========================
+  // PRICE ROW
+  // =========================
+  Widget _priceRow(
     BuildContext context, {
-    IconData? icon,
     required String label,
     required String value,
     bool isTotal = false,
   }) {
+    final theme = Theme.of(context);
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          if (icon != null)
-            Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
-          if (icon != null) const SizedBox(width: 8),
           Expanded(
             child: Text(
               label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
               ),
             ),
           ),
           Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
               fontSize: isTotal ? 16 : 14,
-              color: isTotal ? Theme.of(context).colorScheme.secondary : null,
+              color: isTotal ? theme.colorScheme.secondary : null,
             ),
           ),
         ],
@@ -202,48 +249,20 @@ class OrderCard extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context) {
-    if (!order.canAccept) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: onReject,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-          ),
-          child: const Text('Refuser la commande'),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton(
-            onPressed: onReject,
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: Colors.red.shade400),
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('Refuser'),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: ElevatedButton(
-            onPressed: onAccept,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.secondary,
-            ),
-            child: const Text('Accepter'),
-          ),
-        ),
-      ],
-    );
+  // =========================
+  // UTILITIES
+  // =========================
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} '
+        'à ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} à ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  String _getInitials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+    return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 }

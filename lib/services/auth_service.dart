@@ -61,15 +61,15 @@ class AuthService extends ChangeNotifier {
       String? token = await _secureStorage.read(key: 'jwt_token');
 
       // CORRECTION ICI: Vérifier si token est null ou vide
-      if (token == null || token.isEmpty) {
+      if (token!.isEmpty) {
         // 2. Fallback vers SharedPreferences
         token = _prefs?.getString('auth_token');
-        if (token != null && token.isNotEmpty) {
+        if (token!.isNotEmpty) {
           print('🔁 Token récupéré depuis SharedPreferences');
         }
       }
 
-      if (token != null && token.isNotEmpty) {
+      if (token.isNotEmpty) {
         print('📋 Token trouvé: OUI (${token.length} caractères)');
         _authToken = token;
 
@@ -157,6 +157,7 @@ class AuthService extends ChangeNotifier {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
               'ngrok-skip-browser-warning': 'true',
+              'Access-Control-Allow-Origin': '*',
             },
             body: body,
           )
@@ -253,6 +254,7 @@ class AuthService extends ChangeNotifier {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Access-Control-Allow-Origin': '*',
         },
         body: body,
       );
@@ -352,6 +354,7 @@ class AuthService extends ChangeNotifier {
               'Authorization': 'Bearer $_authToken',
               'Content-Type': 'application/json',
               'Accept': 'application/json',
+              'Access-Control-Allow-Origin': '*',
               // Ajouter d'autres headers au besoin
               'ngrok-skip-browser-warning': 'true',
             },
@@ -471,6 +474,7 @@ class AuthService extends ChangeNotifier {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Access-Control-Allow-Origin': '*',
         },
         body: body,
       );
@@ -520,6 +524,7 @@ class AuthService extends ChangeNotifier {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Access-Control-Allow-Origin': '*',
         },
         body: body,
       );
@@ -569,6 +574,7 @@ class AuthService extends ChangeNotifier {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Access-Control-Allow-Origin': '*',
         },
         body: body,
       );

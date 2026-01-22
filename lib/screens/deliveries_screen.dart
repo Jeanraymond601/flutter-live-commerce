@@ -19,7 +19,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
   void initState() {
     super.initState();
     _loadSampleDeliveries();
-    _searchController.addListener(_onSearchChanged);
+    _searchController.addListener(_applyFilters);
   }
 
   @override
@@ -30,7 +30,6 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
 
   void _loadSampleDeliveries() {
     final sampleDeliveries = DeliveryDataGenerator.generateSampleDeliveries(8);
-
     setState(() {
       deliveries = sampleDeliveries;
       filteredDeliveries = sampleDeliveries;
@@ -44,10 +43,6 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
     });
   }
 
-  void _onSearchChanged() {
-    _applyFilters();
-  }
-
   void _applyFilters() {
     List<Delivery> result = deliveries;
 
@@ -57,14 +52,17 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
     }
 
     // Filtre par recherche
-    final searchQuery = _searchController.text.toLowerCase().trim();
-    if (searchQuery.isNotEmpty) {
-      result = result.where((delivery) {
-        return delivery.customerName.toLowerCase().contains(searchQuery) ||
-            delivery.id.toLowerCase().contains(searchQuery) ||
-            delivery.productName.toLowerCase().contains(searchQuery) ||
-            delivery.deliveryPersonName.toLowerCase().contains(searchQuery);
-      }).toList();
+    final query = _searchController.text.toLowerCase().trim();
+    if (query.isNotEmpty) {
+      result = result
+          .where(
+            (d) =>
+                d.customerName.toLowerCase().contains(query) ||
+                d.id.toLowerCase().contains(query) ||
+                d.productName.toLowerCase().contains(query) ||
+                d.deliveryPersonName.toLowerCase().contains(query),
+          )
+          .toList();
     }
 
     setState(() {
@@ -79,102 +77,95 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.7,
-          maxChildSize: 0.9,
-          minChildSize: 0.5,
-          builder: (context, scrollController) {
-            return SingleChildScrollView(
-              controller: scrollController,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (context, scrollController) {
+          return SingleChildScrollView(
+            controller: scrollController,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    Center(
-                      child: Text(
-                        'Détails de la livraison #${delivery.id}',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                  ),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: Text(
+                      'Détails de la livraison #${delivery.id}',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    _buildDetailItem(
-                      context,
-                      'Client',
-                      delivery.customerName,
-                      Icons.person,
+                  ),
+                  const SizedBox(height: 24),
+                  _buildDetailItem(
+                    context,
+                    'Client',
+                    delivery.customerName,
+                    Icons.person,
+                  ),
+                  _buildDetailItem(
+                    context,
+                    'Adresse',
+                    delivery.fullAddress,
+                    Icons.location_on,
+                  ),
+                  _buildDetailItem(
+                    context,
+                    'Produit',
+                    delivery.productInfo,
+                    Icons.shopping_bag,
+                  ),
+                  _buildDetailItem(
+                    context,
+                    'Montant total',
+                    '${delivery.orderTotal.toStringAsFixed(2)} €',
+                    Icons.euro,
+                  ),
+                  _buildDetailItem(
+                    context,
+                    'Frais livraison',
+                    '${delivery.deliveryFee.toStringAsFixed(2)} €',
+                    Icons.local_shipping,
+                  ),
+                  _buildDetailItem(
+                    context,
+                    'Livreur',
+                    delivery.deliveryPersonName,
+                    Icons.delivery_dining,
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        // Action depuis menu d'actions si besoin
+                      },
+                      icon: const Icon(Icons.more_vert),
+                      label: const Text('Actions'),
                     ),
-                    _buildDetailItem(
-                      context,
-                      'Téléphone',
-                      delivery.customerPhone,
-                      Icons.phone,
-                    ),
-                    _buildDetailItem(
-                      context,
-                      'Adresse',
-                      delivery.fullAddress,
-                      Icons.location_on,
-                    ),
-                    _buildDetailItem(
-                      context,
-                      'Produit',
-                      delivery.productInfo,
-                      Icons.shopping_bag,
-                    ),
-                    _buildDetailItem(
-                      context,
-                      'Montant total',
-                      '${delivery.orderTotal.toStringAsFixed(2)} €',
-                      Icons.euro,
-                    ),
-                    _buildDetailItem(
-                      context,
-                      'Frais de livraison',
-                      '${delivery.deliveryFee.toStringAsFixed(2)} €',
-                      Icons.local_shipping,
-                    ),
-                    _buildDetailItem(
-                      context,
-                      'Livreur',
-                      delivery.deliveryPersonName,
-                      Icons.delivery_dining,
-                    ),
-                    const SizedBox(height: 30),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _showContactOptions(delivery);
-                        },
-                        child: const Text('Contacter le client'),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          },
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -229,132 +220,6 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
     );
   }
 
-  void _showContactOptions(Delivery delivery) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Contacter ${delivery.customerName}',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: const Icon(Icons.phone, color: Colors.green),
-                title: const Text('Appeler le client'),
-                subtitle: Text(delivery.customerPhone),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Ici, vous intégreriez la logique d'appel
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.message, color: Colors.blue),
-                title: const Text('Envoyer un SMS'),
-                subtitle: const Text('Message direct'),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Ici, vous intégreriez la logique de SMS
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.chat_bubble, color: Colors.green),
-                title: const Text('Envoyer sur WhatsApp'),
-                subtitle: const Text('Si disponible'),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Ici, vous intégreriez la logique WhatsApp
-                },
-              ),
-              const SizedBox(height: 20),
-              OutlinedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Annuler'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _contactDeliveryPerson(Delivery delivery) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Contacter le livreur'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundImage: NetworkImage(delivery.deliveryPersonPhoto),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          delivery.deliveryPersonName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          delivery.deliveryPersonPhone,
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Text('Choisissez un mode de contact :'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                // Logique d'appel
-              },
-              icon: const Icon(Icons.phone),
-              label: const Text('Appeler'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                // Logique de SMS
-              },
-              icon: const Icon(Icons.message),
-              label: const Text('SMS'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -365,7 +230,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
       ),
       body: Column(
         children: [
-          // Barre de recherche
+          // Recherche
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: TextField(
@@ -406,7 +271,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
             ),
           ),
 
-          // Compteur
+          // Compteur et refresh
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -429,7 +294,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
             ),
           ),
 
-          // Liste des livraisons
+          // Liste
           Expanded(
             child: filteredDeliveries.isEmpty
                 ? Center(
@@ -467,9 +332,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                     ),
                   )
                 : RefreshIndicator(
-                    onRefresh: () async {
-                      _loadSampleDeliveries();
-                    },
+                    onRefresh: () async => _loadSampleDeliveries(),
                     child: ListView.builder(
                       padding: const EdgeInsets.only(bottom: 20),
                       itemCount: filteredDeliveries.length,
@@ -477,10 +340,6 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                         final delivery = filteredDeliveries[index];
                         return DeliveryCard(
                           delivery: delivery,
-                          onContactDeliveryPerson: () =>
-                              _contactDeliveryPerson(delivery),
-                          onContactCustomer: () =>
-                              _showContactOptions(delivery),
                           onViewDetails: () => _showDeliveryDetails(delivery),
                         );
                       },

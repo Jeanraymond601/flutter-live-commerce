@@ -5,15 +5,11 @@ import 'progress_timeline.dart';
 
 class DeliveryCard extends StatelessWidget {
   final Delivery delivery;
-  final VoidCallback onContactDeliveryPerson;
-  final VoidCallback onContactCustomer;
   final VoidCallback onViewDetails;
 
   const DeliveryCard({
     super.key,
     required this.delivery,
-    required this.onContactDeliveryPerson,
-    required this.onContactCustomer,
     required this.onViewDetails,
   });
 
@@ -21,12 +17,14 @@ class DeliveryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 3,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête avec statut et dates
+            // HEADER: Client name + Delivery ID + Status badge
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -57,7 +55,7 @@ class DeliveryCard extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // Section client
+            // SECTION CLIENT
             _buildSectionHeader(context, 'Client'),
             _buildInfoRow(
               context,
@@ -74,7 +72,7 @@ class DeliveryCard extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // Section produit et prix
+            // SECTION COMMANDE
             _buildSectionHeader(context, 'Commande'),
             _buildInfoRow(
               context,
@@ -92,7 +90,7 @@ class DeliveryCard extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // Section livreur
+            // SECTION LIVREUR (avatar + nom)
             _buildSectionHeader(context, 'Livreur'),
             Row(
               children: [
@@ -102,37 +100,40 @@ class DeliveryCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        delivery.deliveryPersonName,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        delivery.deliveryPersonPhone,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    delivery.deliveryPersonName,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
+                ),
+                // BOUTON ACTION (trois points)
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: Colors.grey[700]),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  onSelected: (value) {
+                    if (value == 'details') onViewDetails();
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'details',
+                      child: Text('Voir détails'),
+                    ),
+                  ],
                 ),
               ],
             ),
 
             const SizedBox(height: 16),
 
-            // Timeline de progression
+            // TIMELINE DE PROGRESSION
             ProgressTimeline(steps: delivery.timelineSteps),
 
             const SizedBox(height: 16),
 
-            // Dates
+            // DATES (badge unique)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -175,46 +176,6 @@ class DeliveryCard extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Boutons d'action
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onContactDeliveryPerson,
-                    icon: const Icon(Icons.phone, size: 16),
-                    label: const Text('Livreur'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onContactCustomer,
-                    icon: const Icon(Icons.message, size: 16),
-                    label: const Text('Client'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: onViewDetails,
-                    icon: const Icon(Icons.visibility, size: 16),
-                    label: const Text('Détails'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
             ),
           ],
         ),

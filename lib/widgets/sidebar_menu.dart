@@ -1,25 +1,25 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../notifiers/seller_profile_notifier.dart';
 
 class SidebarMenu extends StatelessWidget {
-  final String vendorName;
   final Function(int) onItemSelected;
   final VoidCallback onClose;
   final int selectedIndex;
-  final int? driverCount; // Nouveau: nombre de livreurs
 
   const SidebarMenu({
     super.key,
-    required this.vendorName,
     required this.onItemSelected,
     required this.onClose,
     this.selectedIndex = 0,
-    this.driverCount,
   });
 
   @override
   Widget build(BuildContext context) {
+    final sellerProfile = Provider.of<SellerProfileNotifier>(context).profile;
+
     return Container(
       width: 280,
       decoration: const BoxDecoration(
@@ -30,191 +30,198 @@ class SidebarMenu extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Header avec avatar
+          // =========================
+          // HEADER PROFIL VENDEUR
+          // =========================
           Container(
             padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
             child: Column(
               children: [
-                // Avatar rond avec badge de livreurs
                 Stack(
                   children: [
+                    // Avatar avec initiales
                     Container(
-                      width: 70,
-                      height: 70,
+                      width: 72,
+                      height: 72,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.2),
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.35),
+                            Colors.white.withOpacity(0.15),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withOpacity(0.4),
                           width: 2,
                         ),
                       ),
-                      child: const Icon(
-                        Icons.store,
-                        size: 35,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (driverCount != null && driverCount! > 0)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: Text(
-                            driverCount.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                      alignment: Alignment.center,
+                      child: sellerProfile.profileImageUrl != null
+                          ? CircleAvatar(
+                              radius: 36,
+                              backgroundImage: NetworkImage(
+                                sellerProfile.profileImageUrl!,
+                              ),
+                            )
+                          : Text(
+                              _getInitials(sellerProfile.fullName),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1,
+                              ),
                             ),
-                          ),
+                    ),
+
+                    // Statut en ligne
+                    Positioned(
+                      bottom: 2,
+                      right: 2,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: Colors.greenAccent,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
                         ),
                       ),
+                    ),
                   ],
                 ),
+
                 const SizedBox(height: 12),
-                // Nom du vendeur
+
+                // Nom vendeur
                 Text(
-                  vendorName,
+                  sellerProfile.fullName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
-                  maxLines: 2,
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  sellerProfile.companyName.isNotEmpty
+                      ? sellerProfile.companyName
+                      : 'Vendeur professionnel',
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Vendeur Professionnel',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-                // Statut du vendeur (optionnel)
-                if (driverCount != null)
-                  Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '$driverCount livreur${driverCount! > 1 ? 's' : ''}',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
+
+                // Badge niveau d'abonnement (en blanc)
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.4),
+                      width: 1,
                     ),
                   ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.workspace_premium_outlined,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        sellerProfile.subscriptionLevel?.toUpperCase() ??
+                            'BASIC',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
 
-          // Menu items
+          // =========================
+          // MENU
+          // =========================
           Expanded(
             child: ListView(
               padding: const EdgeInsets.only(top: 8),
               children: [
                 _buildMenuItem(
                   icon: Icons.dashboard_outlined,
-                  title: "Tableau de bord",
+                  title: 'Tableau de bord',
                   index: 0,
-                  badgeCount: null,
                 ),
                 _buildDivider(),
                 _buildMenuItem(
                   icon: Icons.shopping_bag_outlined,
-                  title: "Gestion produits",
+                  title: 'Gestion produits',
                   index: 1,
-                  badgeCount: null,
                 ),
                 _buildDivider(),
                 _buildMenuItem(
                   icon: Icons.receipt_long,
-                  title: "Commandes",
+                  title: 'Commandes',
                   index: 2,
-                  badgeCount:
-                      null, // Vous pouvez ajouter un badge pour nouvelles commandes
                 ),
                 _buildDivider(),
                 _buildMenuItem(
                   icon: Icons.local_shipping,
-                  title: "Livraisons",
+                  title: 'Livraisons',
                   index: 3,
-                  badgeCount:
-                      null, // Vous pouvez ajouter un badge pour livraisons en attente
                 ),
                 _buildDivider(),
                 _buildMenuItem(
                   icon: Icons.directions_bike,
-                  title: "Mes Livreurs",
+                  title: 'Mes Livreurs',
                   index: 4,
-                  badgeCount: driverCount, // Montre le nombre de livreurs
-                  isDriverSection: true,
                 ),
                 _buildDivider(),
                 _buildMenuItem(
                   icon: Icons.workspace_premium_outlined,
-                  title: "Abonnement",
+                  title: 'Abonnement',
                   index: 5,
-                  badgeCount: null,
                 ),
                 _buildDivider(),
                 _buildMenuItem(
                   icon: Icons.person_outline,
-                  title: "Mon Profil",
+                  title: 'Mon Profil',
                   index: 6,
-                  badgeCount: null,
                 ),
                 _buildDivider(),
                 _buildMenuItem(
                   icon: Icons.facebook,
-                  title: "Intégration Facebook",
+                  title: 'Intégration Facebook',
                   index: 7,
-                  isLogout: false,
-                  badgeCount: null,
                 ),
               ],
             ),
           ),
 
-          // Section de statistiques rapides (optionnelle)
-          if (driverCount != null && driverCount! > 0)
-            Container(
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Statistiques',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$driverCount livreur${driverCount! > 1 ? 's' : ''} actif${driverCount! > 1 ? 's' : ''}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 11),
-                  ),
-                ],
-              ),
-            ),
-
-          // Version
+          // =========================
+          // FOOTER
+          // =========================
           Container(
             padding: const EdgeInsets.all(12),
             child: const Column(
@@ -236,13 +243,13 @@ class SidebarMenu extends StatelessWidget {
     );
   }
 
+  // =========================
+  // MENU ITEM
+  // =========================
   Widget _buildMenuItem({
     required IconData icon,
     required String title,
     required int index,
-    bool isLogout = false,
-    bool isDriverSection = false,
-    int? badgeCount,
   }) {
     final isSelected = selectedIndex == index;
 
@@ -266,65 +273,19 @@ class SidebarMenu extends StatelessWidget {
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  icon,
-                  color: isLogout
-                      ? Colors.red[200]
-                      : isDriverSection
-                      ? Colors.yellow[200]
-                      : Colors.white,
-                  size: 22,
-                ),
+                child: Icon(icon, size: 22, color: Colors.white),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: isLogout
-                            ? Colors.red[200]
-                            : isDriverSection
-                            ? Colors.yellow[200]
-                            : Colors.white,
-                        fontSize: 15,
-                        fontWeight: isSelected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                      ),
-                    ),
-                    if (badgeCount != null)
-                      Text(
-                        '$badgeCount disponible${badgeCount > 1 ? 's' : ''}',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 11,
-                        ),
-                      ),
-                  ],
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  ),
                 ),
               ),
-              if (badgeCount != null && badgeCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDriverSection ? Colors.yellow : Colors.green,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    badgeCount.toString(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
               if (isSelected)
                 Container(
                   width: 3,
@@ -348,5 +309,18 @@ class SidebarMenu extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 20),
       color: Colors.white.withOpacity(0.2),
     );
+  }
+
+  // =========================
+  // INITIALS GENERATOR
+  // =========================
+  String _getInitials(String name) {
+    if (name.trim().isEmpty) return '??';
+
+    final parts = name.trim().split(' ');
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+    return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 }

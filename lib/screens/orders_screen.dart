@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/order_model.dart';
 import '../widgets/order_card.dart';
@@ -14,12 +15,52 @@ class _OrdersScreenState extends State<OrdersScreen> {
   List<Order> filteredOrders = [];
   OrderStatus? selectedFilter;
 
+  Timer? _autoRefreshTimer;
+
   @override
   void initState() {
     super.initState();
     _loadSampleOrders();
+    _startAutoRefresh();
   }
 
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  // =========================
+  // AUTO REFRESH (simulation live)
+  // =========================
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _autoUpdateOrders(),
+    );
+  }
+
+  void _autoUpdateOrders() {
+    setState(() {
+      orders = orders.map((order) {
+        if (order.status == OrderStatus.pending &&
+            order.availableStock >= order.quantity) {
+          return order.copyWith(status: OrderStatus.confirmed);
+        }
+        if (order.status == OrderStatus.pending &&
+            order.availableStock < order.quantity) {
+          return order.copyWith(status: OrderStatus.rejected);
+        }
+        return order;
+      }).toList();
+
+      _filterOrders(selectedFilter);
+    });
+  }
+
+  // =========================
+  // SAMPLE DATA
+  // =========================
   void _loadSampleOrders() {
     final sampleOrders = [
       Order(
@@ -78,20 +119,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
         status: OrderStatus.rejected,
         availableStock: 0,
       ),
-      Order(
-        id: '5',
-        customerName: 'Thomas Petit',
-        neighborhood: 'Le Centre',
-        city: 'Lille',
-        phone: '07 55 66 77 88',
-        productName: 'Sac à dos',
-        quantity: 4,
-        productPrice: 39.99,
-        deliveryFee: 7.99,
-        orderDate: DateTime.now().subtract(const Duration(hours: 1)),
-        status: OrderStatus.pending,
-        availableStock: 10,
-      ),
     ];
 
     setState(() {
@@ -100,173 +127,131 @@ class _OrdersScreenState extends State<OrdersScreen> {
     });
   }
 
+  // =========================
+  // FILTER
+  // =========================
   void _filterOrders(OrderStatus? status) {
+    selectedFilter = status;
+
     setState(() {
-      selectedFilter = status;
       if (status == null) {
         filteredOrders = orders;
       } else {
-        filteredOrders = orders
-            .where((order) => order.status == status)
-            .toList();
+        filteredOrders = orders.where((o) => o.status == status).toList();
       }
     });
   }
 
-  void _acceptOrder(String orderId) {
-    setState(() {
-      orders = orders.map((order) {
-        if (order.id == orderId) {
-          return order.copyWith(status: OrderStatus.confirmed);
-        }
-        return order;
-      }).toList();
-      _filterOrders(selectedFilter);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Commande acceptée avec succès'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  void _rejectOrder(String orderId) {
-    setState(() {
-      orders = orders.map((order) {
-        if (order.id == orderId) {
-          return order.copyWith(status: OrderStatus.rejected);
-        }
-        return order;
-      }).toList();
-      _filterOrders(selectedFilter);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Commande refusée'),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
-
+  // =========================
+  // UI
+  // =========================
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Commandes Live Commerce'),
         centerTitle: true,
-        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadSampleOrders,
-            tooltip: 'Recharger',
           ),
         ],
       ),
       body: Column(
         children: [
-          // Filtres
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  FilterChip(
-                    label: const Text('Toutes'),
-                    selected: selectedFilter == null,
-                    onSelected: (_) => _filterOrders(null),
-                  ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    label: const Text('En attente'),
-                    selected: selectedFilter == OrderStatus.pending,
-                    selectedColor: Colors.amber.withOpacity(0.2),
-                    onSelected: (_) => _filterOrders(OrderStatus.pending),
-                  ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    label: const Text('Confirmées'),
-                    selected: selectedFilter == OrderStatus.confirmed,
-                    selectedColor: Colors.green.withOpacity(0.2),
-                    onSelected: (_) => _filterOrders(OrderStatus.confirmed),
-                  ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    label: const Text('Refusées'),
-                    selected: selectedFilter == OrderStatus.rejected,
-                    selectedColor: Colors.red.withOpacity(0.2),
-                    onSelected: (_) => _filterOrders(OrderStatus.rejected),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Compteur
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Text(
-                  '${filteredOrders.length} commande${filteredOrders.length > 1 ? 's' : ''}',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Liste des commandes
-          Expanded(
-            child: filteredOrders.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.shopping_cart_outlined,
-                          size: 64,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.3),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Aucune commande',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withOpacity(0.5),
-                              ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    itemCount: filteredOrders.length,
-                    itemBuilder: (context, index) {
-                      final order = filteredOrders[index];
-                      return OrderCard(
-                        order: order,
-                        onAccept: () => _acceptOrder(order.id),
-                        onReject: () => _rejectOrder(order.id),
-                      );
-                    },
-                  ),
-          ),
+          _buildFilters(theme),
+          _buildCounter(theme),
+          const SizedBox(height: 6),
+          Expanded(child: _buildOrdersList(theme)),
         ],
       ),
+    );
+  }
+
+  // =========================
+  // FILTER CHIPS
+  // =========================
+  Widget _buildFilters(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _filterChip('Toutes', null),
+            _filterChip('En attente', OrderStatus.pending),
+            _filterChip('Confirmées', OrderStatus.confirmed),
+            _filterChip('Refusées', OrderStatus.rejected),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, OrderStatus? status) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        label: Text(label),
+        selected: selectedFilter == status,
+        onSelected: (_) => _filterOrders(status),
+      ),
+    );
+  }
+
+  // =========================
+  // COUNTER
+  // =========================
+  Widget _buildCounter(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          '${filteredOrders.length} commande(s)',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // =========================
+  // LIST
+  // =========================
+  Widget _buildOrdersList(ThemeData theme) {
+    if (filteredOrders.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.shopping_cart_outlined,
+              size: 64,
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Aucune commande',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 16),
+      itemCount: filteredOrders.length,
+      itemBuilder: (context, index) {
+        return OrderCard(order: filteredOrders[index]);
+      },
     );
   }
 }
