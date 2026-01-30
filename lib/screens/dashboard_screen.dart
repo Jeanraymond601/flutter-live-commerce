@@ -1,6 +1,7 @@
-// lib/screens/dashboard_screen.dart - VERSION AVANCÉE AVEC GRAPHIQUES DYNAMIQUES
+// lib/screens/dashboard_screen.dart - VERSION CORRIGÉE
 // ignore_for_file: avoid_print
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -53,6 +54,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
     5: 'Abonnement',
     6: 'Profil',
     7: 'Intégration Facebook',
+    8: 'Services IA',
   };
 
   @override
@@ -138,7 +140,6 @@ class _DashboardListScreenState extends State<DashboardScreen> {
     product_service.ProductService productService,
   ) async {
     try {
-      // Appelle l'API pour récupérer les données de vente
       await productService.loadSalesData();
     } catch (e) {
       print('⚠️ Erreur chargement données ventes: $e');
@@ -166,13 +167,11 @@ class _DashboardListScreenState extends State<DashboardScreen> {
   void _generateChartDataFromService(
     product_service.ProductService productService,
   ) {
-    // Utiliser les données réelles du service si disponibles
     if (productService.salesChartData != null &&
         productService.salesChartData!.isNotEmpty) {
       _updateRevenueDataFromService(productService.salesChartData!);
       _updateSalesDataFromService(productService.salesChartData!);
     } else {
-      // Données de démonstration
       _updateRevenueData();
       _updateSalesData();
     }
@@ -316,6 +315,9 @@ class _DashboardListScreenState extends State<DashboardScreen> {
       case 7:
         _navigateToFacebookIntegration();
         break;
+      case 8:
+        _navigateToOCRDemo();
+        break;
       default:
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -323,6 +325,32 @@ class _DashboardListScreenState extends State<DashboardScreen> {
             backgroundColor: Colors.blue,
           ),
         );
+    }
+  }
+
+  Future<void> _navigateToOCRDemo() async {
+    try {
+      Navigator.pushNamed(context, '/ocr-extraction');
+    } catch (e) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Module IA'),
+          content: const Text(
+            'Le module d\'extraction OCR et IA est disponible.\n\n'
+            'Fonctionnalités:\n'
+            '• Extraction automatique de coordonnées\n'
+            '• Analyse de texte et d\'images\n'
+            '• Détection d\'intention client\n',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -394,7 +422,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    Provider.of<DriverService>(context);
+    Provider.of<DriverService>(context, listen: false);
 
     return Scaffold(
       body: Stack(
@@ -566,7 +594,7 @@ class _DashboardListScreenState extends State<DashboardScreen> {
                   : 'stock optimal',
               icon: Icons.warning_amber,
               color: _lowStockProducts > 0 ? Colors.orange : Colors.grey,
-              trend: _lowStockProducts > 0 ? '⚠️ Attention' : '✅ Bon',
+              trend: _lowStockProducts > 0 ? 'Attention' : 'Bon',
             ),
             _buildStatCard(
               title: 'Valeur du stock',

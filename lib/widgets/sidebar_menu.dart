@@ -1,3 +1,4 @@
+// lib/widgets/sidebar_menu.dart - VERSION CORRIGÉE
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
@@ -162,7 +163,7 @@ class SidebarMenu extends StatelessWidget {
           ),
 
           // =========================
-          // MENU
+          // MENU PRINCIPAL
           // =========================
           Expanded(
             child: ListView(
@@ -215,25 +216,42 @@ class SidebarMenu extends StatelessWidget {
                   title: 'Intégration Facebook',
                   index: 7,
                 ),
+
+                // =========================
+                // NOUVEAU : EXTRACTION IA (après Facebook)
+                // =========================
+                _buildDivider(),
+                _buildMenuItem(
+                  icon: Icons.auto_awesome_mosaic,
+                  title: 'Analyse IA',
+                  index: 8,
+                  badge: 'IA',
+                ),
               ],
             ),
           ),
 
           // =========================
-          // FOOTER
+          // FOOTER (inchangé)
           // =========================
           Container(
             padding: const EdgeInsets.all(12),
-            child: const Column(
+            child: Column(
               children: [
-                Text(
+                // Information version (si existante dans ton code original)
+                const Text(
                   'Commerce Madagascar',
                   style: TextStyle(color: Colors.white70, fontSize: 10),
                 ),
-                SizedBox(height: 2),
-                Text(
-                  'Version 1.0.0',
-                  style: TextStyle(color: Colors.white54, fontSize: 10),
+                const SizedBox(height: 2),
+                const Text(
+                  'v2.1.0',
+                  style: TextStyle(color: Colors.white54, fontSize: 9),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  '© 2026 Tous droits réservés',
+                  style: TextStyle(color: Colors.white54, fontSize: 8),
                 ),
               ],
             ),
@@ -250,8 +268,12 @@ class SidebarMenu extends StatelessWidget {
     required IconData icon,
     required String title,
     required int index,
+    String? subtitle,
+    Color? color,
+    String? badge,
   }) {
     final isSelected = selectedIndex == index;
+    final itemColor = color ?? Colors.white;
 
     return Material(
       color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
@@ -273,17 +295,65 @@ class SidebarMenu extends StatelessWidget {
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, size: 22, color: Colors.white),
+                child: Icon(
+                  icon,
+                  size: 22,
+                  color: isSelected ? itemColor : Colors.white,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              color: isSelected ? itemColor : Colors.white,
+                              fontSize: 15,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        if (badge != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: itemColor.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: itemColor),
+                            ),
+                            child: Text(
+                              badge,
+                              style: TextStyle(
+                                color: itemColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (subtitle != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               if (isSelected)

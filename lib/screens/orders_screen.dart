@@ -1,257 +1,210 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import '../models/order_model.dart';
-import '../widgets/order_card.dart';
 
-class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key});
+class ExtractionScreen extends StatefulWidget {
+  const ExtractionScreen({super.key});
 
   @override
-  State<OrdersScreen> createState() => _OrdersScreenState();
+  State<ExtractionScreen> createState() => _ExtractionScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
-  List<Order> orders = [];
-  List<Order> filteredOrders = [];
-  OrderStatus? selectedFilter;
+class _ExtractionScreenState extends State<ExtractionScreen> {
+  final _formKey = GlobalKey<FormState>();
+  String? _formData;
+  String? _imageData;
 
-  Timer? _autoRefreshTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSampleOrders();
-    _startAutoRefresh();
-  }
-
-  @override
-  void dispose() {
-    _autoRefreshTimer?.cancel();
-    super.dispose();
-  }
+  final List<Map<String, String>> _history = [];
 
   // =========================
-  // AUTO REFRESH (simulation live)
+  // SIMULATION EXTRACTION
   // =========================
-  void _startAutoRefresh() {
-    _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 10),
-      (_) => _autoUpdateOrders(),
-    );
+  void _extractFromForm() {
+    if (_formKey.currentState!.validate()) {
+      _formKey.currentState!.save();
+      setState(() {
+        _history.insert(0, {
+          'type': 'Formulaire',
+          'result': _formData!,
+          'datetime': DateTime.now().toString(),
+        });
+      });
+    }
   }
 
-  void _autoUpdateOrders() {
+  void _extractFromImage() {
     setState(() {
-      orders = orders.map((order) {
-        if (order.status == OrderStatus.pending &&
-            order.availableStock >= order.quantity) {
-          return order.copyWith(status: OrderStatus.confirmed);
-        }
-        if (order.status == OrderStatus.pending &&
-            order.availableStock < order.quantity) {
-          return order.copyWith(status: OrderStatus.rejected);
-        }
-        return order;
-      }).toList();
-
-      _filterOrders(selectedFilter);
+      // Simulation extraction image
+      _imageData = 'Texte extrait de l\'image';
+      _history.insert(0, {
+        'type': 'Image',
+        'result': _imageData!,
+        'datetime': DateTime.now().toString(),
+      });
     });
   }
 
   // =========================
-  // SAMPLE DATA
-  // =========================
-  void _loadSampleOrders() {
-    final sampleOrders = [
-      Order(
-        id: '1',
-        customerName: 'Jean Dupont',
-        neighborhood: 'Centre-ville',
-        city: 'Paris',
-        phone: '06 12 34 56 78',
-        productName: 'T-shirt Premium',
-        quantity: 2,
-        productPrice: 29.99,
-        deliveryFee: 4.99,
-        orderDate: DateTime.now().subtract(const Duration(hours: 2)),
-        status: OrderStatus.pending,
-        availableStock: 5,
-      ),
-      Order(
-        id: '2',
-        customerName: 'Marie Martin',
-        neighborhood: 'Les Hauts',
-        city: 'Lyon',
-        phone: '07 23 45 67 89',
-        productName: 'Casque Bluetooth',
-        quantity: 1,
-        productPrice: 89.99,
-        deliveryFee: 6.99,
-        orderDate: DateTime.now().subtract(const Duration(days: 1)),
-        status: OrderStatus.confirmed,
-        availableStock: 3,
-      ),
-      Order(
-        id: '3',
-        customerName: 'Pierre Lefevre',
-        neighborhood: 'Le Port',
-        city: 'Marseille',
-        phone: '06 98 76 54 32',
-        productName: 'Montre Connectée',
-        quantity: 3,
-        productPrice: 149.99,
-        deliveryFee: 8.99,
-        orderDate: DateTime.now().subtract(const Duration(hours: 5)),
-        status: OrderStatus.pending,
-        availableStock: 2,
-      ),
-      Order(
-        id: '4',
-        customerName: 'Sophie Bernard',
-        neighborhood: 'La Plaine',
-        city: 'Bordeaux',
-        phone: '06 11 22 33 44',
-        productName: 'Enceinte Portable',
-        quantity: 1,
-        productPrice: 59.99,
-        deliveryFee: 5.99,
-        orderDate: DateTime.now().subtract(const Duration(days: 2)),
-        status: OrderStatus.rejected,
-        availableStock: 0,
-      ),
-    ];
-
-    setState(() {
-      orders = sampleOrders;
-      filteredOrders = sampleOrders;
-    });
-  }
-
-  // =========================
-  // FILTER
-  // =========================
-  void _filterOrders(OrderStatus? status) {
-    selectedFilter = status;
-
-    setState(() {
-      if (status == null) {
-        filteredOrders = orders;
-      } else {
-        filteredOrders = orders.where((o) => o.status == status).toList();
-      }
-    });
-  }
-
-  // =========================
-  // UI
+  // WIDGETS
   // =========================
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Commandes Live Commerce'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadSampleOrders,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _buildFilters(theme),
-          _buildCounter(theme),
-          const SizedBox(height: 6),
-          Expanded(child: _buildOrdersList(theme)),
-        ],
-      ),
-    );
-  }
-
-  // =========================
-  // FILTER CHIPS
-  // =========================
-  Widget _buildFilters(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _filterChip('Toutes', null),
-            _filterChip('En attente', OrderStatus.pending),
-            _filterChip('Confirmées', OrderStatus.confirmed),
-            _filterChip('Refusées', OrderStatus.rejected),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _filterChip(String label, OrderStatus? status) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: FilterChip(
-        label: Text(label),
-        selected: selectedFilter == status,
-        onSelected: (_) => _filterOrders(status),
-      ),
-    );
-  }
-
-  // =========================
-  // COUNTER
-  // =========================
-  Widget _buildCounter(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          '${filteredOrders.length} commande(s)',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // =========================
-  // LIST
-  // =========================
-  Widget _buildOrdersList(ThemeData theme) {
-    if (filteredOrders.isEmpty) {
-      return Center(
+      appBar: AppBar(title: const Text('Extraction'), centerTitle: true),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(
-              Icons.shopping_cart_outlined,
-              size: 64,
-              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            // =========================
+            // SECTION 1: FORMULAIRE
+            // =========================
+            Card(
+              elevation: 3,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.only(bottom: 16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Extraction depuis Formulaire',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Form(
+                      key: _formKey,
+                      child: TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Entrez du texte',
+                        ),
+                        validator: (value) =>
+                            value == null || value.isEmpty ? 'Requis' : null,
+                        onSaved: (value) => _formData = value,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _extractFromForm,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Extraire'),
+                    ),
+                    if (_formData != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Résultat: $_formData',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Aucune commande',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
+
+            // =========================
+            // SECTION 2: IMAGE
+            // =========================
+            Card(
+              elevation: 3,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.only(bottom: 16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Extraction depuis Image',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _extractFromImage,
+                      icon: const Icon(Icons.image),
+                      label: const Text('Importer / Extraire Image'),
+                    ),
+                    if (_imageData != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Résultat: $_imageData',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // =========================
+            // SECTION 3: HISTORIQUE
+            // =========================
+            Card(
+              elevation: 3,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Historique des Extractions',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_history.isEmpty)
+                      Center(
+                        child: Text(
+                          'Aucune extraction',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey,
+                          ),
+                        ),
+                      )
+                    else
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _history.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 16, thickness: 1),
+                        itemBuilder: (context, index) {
+                          final item = _history[index];
+                          return ListTile(
+                            leading: Icon(
+                              item['type'] == 'Formulaire'
+                                  ? Icons.note_alt
+                                  : Icons.image,
+                              color: theme.colorScheme.primary,
+                            ),
+                            title: Text(item['result']!),
+                            subtitle: Text(item['datetime']!),
+                          );
+                        },
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
         ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 16),
-      itemCount: filteredOrders.length,
-      itemBuilder: (context, index) {
-        return OrderCard(order: filteredOrders[index]);
-      },
+      ),
     );
   }
 }

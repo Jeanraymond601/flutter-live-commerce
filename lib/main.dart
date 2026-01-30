@@ -1,6 +1,5 @@
-// lib/main.dart
+// lib/main.dart - VERSION CORRIGÉE
 // ignore_for_file: avoid_print, use_build_context_synchronously
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,7 +22,6 @@ import 'package:commerce/provider/facebook_provider.dart';
 
 // Notifiers
 import 'package:commerce/notifiers/seller_profile_notifier.dart';
-
 // Screens
 import 'package:commerce/screens/splash_screen.dart';
 import 'package:commerce/screens/login_screen.dart';
@@ -44,6 +42,7 @@ import 'package:commerce/screens/seller_profile_screen.dart';
 import 'package:commerce/screens/orders_screen.dart';
 import 'package:commerce/screens/deliveries_screen.dart';
 import 'package:commerce/screens/facebook_integration_screen.dart';
+import 'package:commerce/screens/ocr_screen.dart'; // NOUVEAU IMPORT OCR
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -198,9 +197,12 @@ class MyApp extends StatelessWidget {
           '/abonnement': (context) => const AbonnementScreen(),
           '/sellerprofil': (context) => const SellerProfileScreen(),
           '/profile': (context) => const SellerProfileScreen(),
-          '/orders': (context) => const OrdersScreen(),
+          '/orders': (context) => const ExtractionScreen(),
           '/deliveries': (context) => const DeliveriesScreen(),
           '/facebook': (context) => const FacebookIntegrationScreen(),
+
+          // NOUVELLE ROUTE OCR
+          '/ocr-extraction': (context) => const OcrScreen(),
         },
 
         // ROUTES DYNAMIQUES (avec arguments)
@@ -359,6 +361,16 @@ class MyApp extends StatelessWidget {
                           ),
                           label: const Text('Produits'),
                         ),
+                        // NOUVEAU : Bouton pour accéder à l'extraction OCR
+                        ElevatedButton.icon(
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/ocr-extraction'),
+                          icon: const Icon(Icons.auto_awesome_mosaic, size: 18),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
+                          ),
+                          label: const Text('Extraction IA'),
+                        ),
                         ElevatedButton.icon(
                           onPressed: () => Navigator.pushNamedAndRemoveUntil(
                             context,
@@ -472,4 +484,11 @@ class MyApp extends StatelessWidget {
       useMaterial3: true,
     );
   }
+}
+
+// ============================================
+// FONCTION D'AUTHENTIFICATION
+// ============================================
+Future<AuthService> createAuthService() async {
+  return AuthService();
 }

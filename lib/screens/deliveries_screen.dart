@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/delivery_model.dart';
+import '../models/delivery_model.dart'; // Import du modèle SQL
 import '../widgets/delivery_card.dart';
 
 class DeliveriesScreen extends StatefulWidget {
@@ -10,15 +10,15 @@ class DeliveriesScreen extends StatefulWidget {
 }
 
 class _DeliveriesScreenState extends State<DeliveriesScreen> {
-  List<Delivery> deliveries = [];
-  List<Delivery> filteredDeliveries = [];
-  DeliveryStatus? selectedFilter;
+  List<SqlDelivery> deliveries = [];
+  List<SqlDelivery> filteredDeliveries = [];
+  SqlDeliveryStatus? selectedFilter;
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadSampleDeliveries();
+    _loadDeliveriesFromSource(); // Charge tes vraies données
     _searchController.addListener(_applyFilters);
   }
 
@@ -28,15 +28,21 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
     super.dispose();
   }
 
-  void _loadSampleDeliveries() {
-    final sampleDeliveries = DeliveryDataGenerator.generateSampleDeliveries(8);
+  void _loadDeliveriesFromSource() {
+    // REMPLACE CE CODE par ta logique réelle de chargement
+    // Exemples:
+    // 1. Depuis une API: await apiClient.getDeliveries();
+    // 2. Depuis une base SQLite: await db.query('deliveries');
+    // 3. Depuis un service: await deliveryService.fetchAll();
+
+    // Pour l'instant, une liste vide - tu rempliras avec tes vraies données
     setState(() {
-      deliveries = sampleDeliveries;
-      filteredDeliveries = sampleDeliveries;
+      deliveries = []; // Remplace par tes vraies données
+      filteredDeliveries = deliveries;
     });
   }
 
-  void _filterDeliveries(DeliveryStatus? status) {
+  void _filterDeliveries(SqlDeliveryStatus? status) {
     setState(() {
       selectedFilter = status;
       _applyFilters();
@@ -44,11 +50,11 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
   }
 
   void _applyFilters() {
-    List<Delivery> result = deliveries;
+    List<SqlDelivery> result = deliveries;
 
     // Filtre par statut
     if (selectedFilter != null) {
-      result = result.where((d) => d.status == selectedFilter).toList();
+      result = result.where((d) => d.deliveryStatus == selectedFilter).toList();
     }
 
     // Filtre par recherche
@@ -60,7 +66,9 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                 d.customerName.toLowerCase().contains(query) ||
                 d.id.toLowerCase().contains(query) ||
                 d.productName.toLowerCase().contains(query) ||
-                d.deliveryPersonName.toLowerCase().contains(query),
+                d.deliveryPersonName.toLowerCase().contains(query) ||
+                d.deliveryCode.toLowerCase().contains(query) ||
+                (d.recipientPhone?.toLowerCase().contains(query) ?? false),
           )
           .toList();
     }
@@ -70,7 +78,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
     });
   }
 
-  void _showDeliveryDetails(Delivery delivery) {
+  void _showDeliveryDetails(SqlDelivery delivery) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -105,9 +113,17 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                   const SizedBox(height: 20),
                   Center(
                     child: Text(
-                      'Détails de la livraison #${delivery.id}',
+                      'Détails de la livraison',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Text(
+                      '#${delivery.deliveryCode}',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                   ),
@@ -118,12 +134,33 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                     delivery.customerName,
                     Icons.person,
                   ),
+                  if (delivery.recipientPhone != null)
+                    _buildDetailItem(
+                      context,
+                      'Téléphone',
+                      delivery.recipientPhone!,
+                      Icons.phone,
+                    ),
                   _buildDetailItem(
                     context,
                     'Adresse',
                     delivery.fullAddress,
                     Icons.location_on,
                   ),
+                  if (delivery.extractedCity.isNotEmpty)
+                    _buildDetailItem(
+                      context,
+                      'Ville',
+                      delivery.extractedCity,
+                      Icons.location_city,
+                    ),
+                  if (delivery.deliveryZone != null)
+                    _buildDetailItem(
+                      context,
+                      'Zone',
+                      delivery.deliveryZone!,
+                      Icons.map,
+                    ),
                   _buildDetailItem(
                     context,
                     'Produit',
@@ -132,15 +169,16 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                   ),
                   _buildDetailItem(
                     context,
-                    'Montant total',
-                    '${delivery.orderTotal.toStringAsFixed(2)} €',
-                    Icons.euro,
+                    'Commande',
+                    delivery.orderId,
+                    Icons.receipt,
                   ),
                   _buildDetailItem(
                     context,
-                    'Frais livraison',
-                    '${delivery.deliveryFee.toStringAsFixed(2)} €',
-                    Icons.local_shipping,
+                    'Statut',
+                    delivery.deliveryStatus.displayName,
+                    Icons.circle,
+                    iconColor: delivery.deliveryStatus.getColor(),
                   ),
                   _buildDetailItem(
                     context,
@@ -148,6 +186,20 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                     delivery.deliveryPersonName,
                     Icons.delivery_dining,
                   ),
+                  if (delivery.deliveryInstructions != null)
+                    _buildDetailItem(
+                      context,
+                      'Instructions',
+                      delivery.deliveryInstructions!,
+                      Icons.note,
+                    ),
+                  if (delivery.scheduledAt != null)
+                    _buildDetailItem(
+                      context,
+                      'Programmée pour',
+                      '${delivery.scheduledAt!.day}/${delivery.scheduledAt!.month}/${delivery.scheduledAt!.year} ${delivery.scheduledAt!.hour}:${delivery.scheduledAt!.minute.toString().padLeft(2, '0')}',
+                      Icons.schedule,
+                    ),
                   const SizedBox(height: 30),
                   SizedBox(
                     width: double.infinity,
@@ -173,10 +225,11 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
     BuildContext context,
     String label,
     String value,
-    IconData icon,
-  ) {
+    IconData icon, {
+    Color? iconColor,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           Container(
@@ -188,7 +241,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
             ),
             child: Icon(
               icon,
-              color: Theme.of(context).colorScheme.primary,
+              color: iconColor ?? Theme.of(context).colorScheme.primary,
               size: 20,
             ),
           ),
@@ -260,13 +313,13 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
               children: [
                 _buildFilterChip('Toutes', null),
                 const SizedBox(width: 8),
-                _buildFilterChip('En attente', DeliveryStatus.pending),
+                _buildFilterChip('En attente', SqlDeliveryStatus.pending),
                 const SizedBox(width: 8),
-                _buildFilterChip('En cours', DeliveryStatus.inProgress),
+                _buildFilterChip('En cours', SqlDeliveryStatus.inProgress),
                 const SizedBox(width: 8),
-                _buildFilterChip('Livrées', DeliveryStatus.delivered),
+                _buildFilterChip('Livrées', SqlDeliveryStatus.delivered),
                 const SizedBox(width: 8),
-                _buildFilterChip('Échouées', DeliveryStatus.failed),
+                _buildFilterChip('Annulées', SqlDeliveryStatus.failed),
               ],
             ),
           ),
@@ -287,7 +340,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
-                  onPressed: _loadSampleDeliveries,
+                  onPressed: _loadDeliveriesFromSource,
                   tooltip: 'Actualiser',
                 ),
               ],
@@ -328,11 +381,22 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
                             },
                             child: const Text('Réinitialiser les filtres'),
                           ),
+                        if (deliveries.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: ElevatedButton(
+                              onPressed: _loadDeliveriesFromSource,
+                              child: const Text('Charger les livraisons'),
+                            ),
+                          ),
                       ],
                     ),
                   )
                 : RefreshIndicator(
-                    onRefresh: () async => _loadSampleDeliveries(),
+                    onRefresh: () async {
+                      _loadDeliveriesFromSource();
+                      return;
+                    },
                     child: ListView.builder(
                       padding: const EdgeInsets.only(bottom: 20),
                       itemCount: filteredDeliveries.length,
@@ -351,19 +415,22 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> {
     );
   }
 
-  Widget _buildFilterChip(String label, DeliveryStatus? status) {
+  Widget _buildFilterChip(String label, SqlDeliveryStatus? status) {
+    final bool isSelected = selectedFilter == status;
+    final Color? chipColor = status?.getColor();
+
     return FilterChip(
-      label: Text(label),
-      selected: selectedFilter == status,
-      onSelected: (_) => _filterDeliveries(status),
-      selectedColor: status?.getColor().withOpacity(0.2),
-      checkmarkColor: status?.getColor(),
-      labelStyle: TextStyle(
-        color: selectedFilter == status ? status?.getColor() : null,
-        fontWeight: selectedFilter == status
-            ? FontWeight.w600
-            : FontWeight.normal,
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? chipColor : null,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        ),
       ),
+      selected: isSelected,
+      onSelected: (_) => _filterDeliveries(status),
+      selectedColor: chipColor?.withOpacity(0.2),
+      checkmarkColor: chipColor,
     );
   }
 }

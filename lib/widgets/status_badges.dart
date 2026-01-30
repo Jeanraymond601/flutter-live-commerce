@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/delivery_model.dart';
+import '../models/delivery_model.dart'; // Import du modèle SQL
 
 class StatusBadge extends StatelessWidget {
-  final DeliveryStatus status;
+  final SqlDeliveryStatus status;
 
   const StatusBadge({super.key, required this.status});
 
